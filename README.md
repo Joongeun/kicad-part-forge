@@ -23,6 +23,41 @@ uv run kifab build parts/24LC256.yaml -o /tmp/out
 
 Then point KiCad at `build/kifab.kicad_sym` and `build/kifab.pretty/`.
 
+## Reuse before you generate (tier T0)
+
+KiCad ships **22,387 symbols and 15,179 footprints**, and they are KLC-clean.
+For a large fraction of parts the right answer is "this already exists", so
+search comes before generation.
+
+```sh
+uv run kifab index                       # one-off, ~40 s; then ~0.3 s to refresh
+uv run kifab search LTC5552 --package '12-Lead Plastic QFN (3mm x 2mm), DWG 05-08-1985'
+uv run kifab adopt --symbol Memory_EEPROM:24LC256 \
+                   --footprint Package_SO:SOIC-8_3.9x4.9mm_P1.27mm --mpn 24LC256
+```
+
+`adopt` writes `parts/<MPN>.yaml`, so a reused part is a normal citizen: it
+builds, it validates, and a wrong pin is still a one-line edit.
+
+### Results come back in two lists, and that is the point
+
+```
+footprints
+  CONFIDENT — none. Package identity was not established.
+  REVIEW — near misses, NOT verified; a human must judge these:
+    Package_DFN_QFN:DFN-12-1EP_2x3mm_P0.45mm_EP0.64x2.4mm  family: QFN != DFN; sides: 4 != 2
+```
+
+**A body-size match is not a package match.** KiCad's `DFN-12-1EP_2x3mm…` has
+the same pin count, body, pitch and exposed pad as the LTC5552's UDB package —
+and is a different land pattern from a different mechanical drawing. Returning
+it confidently would ship a wrong footprint that looks right, so identity is
+established from **family, measured edge count, pin count, pitch, body,
+exposed-pad presence and size, and drawing number** — and an attribute nobody
+stated blocks confidence just as hard as one that disagrees. `.confident` and
+`.review` are separate lists in the API too; there is no combined accessor to
+take `[0]` from by accident.
+
 ## Verify it
 
 ```sh
@@ -79,6 +114,8 @@ carries its semantics in its `description`.
 | `src/kifab/ir/` | the Part IR — the contract |
 | `src/kifab/emit/` | S-expression writer + `.kicad_sym` / `.kicad_mod` emitters |
 | `src/kifab/ipc/` | IPC-7351B land arithmetic and package families |
+| `src/kifab/index/` | SQLite/FTS index over the local corpus + package identity |
+| `src/kifab/resolve/` | resolver tiers; `local.py` is T0, `adopt.py` turns a hit into IR |
 | `src/kifab/uuids.py` | derived (never random) UUIDs |
 | `parts/` | the part corpus |
 | `tests/golden/` | reviewed reference output, byte-compared |

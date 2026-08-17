@@ -1,0 +1,61 @@
+"""Index over the local KiCad corpus — the data layer behind the T0 resolver."""
+
+from .package_id import (
+    BODY_TOL,
+    EP_TOL,
+    FAMILY_EDGES,
+    Evidence,
+    PackageIdentity,
+    PackageMatch,
+    PadGeom,
+    Verdict,
+    canonical_family,
+    compare,
+    identity_from_footprint,
+    measure_pitch,
+    measure_sides,
+    split_exposed,
+)
+from .read import (
+    FootprintRecord,
+    SymbolRecord,
+    read_footprint,
+    read_symbol_library,
+    unquote,
+)
+from .store import (
+    Index,
+    LibraryRoot,
+    RefreshStats,
+    default_db_path,
+    default_roots,
+    identity_of_row,
+)
+
+__all__ = [
+    "BODY_TOL",
+    "EP_TOL",
+    "FAMILY_EDGES",
+    "Evidence",
+    "FootprintRecord",
+    "Index",
+    "LibraryRoot",
+    "PackageIdentity",
+    "PackageMatch",
+    "PadGeom",
+    "RefreshStats",
+    "SymbolRecord",
+    "Verdict",
+    "canonical_family",
+    "compare",
+    "default_db_path",
+    "default_roots",
+    "identity_from_footprint",
+    "identity_of_row",
+    "measure_pitch",
+    "measure_sides",
+    "read_footprint",
+    "read_symbol_library",
+    "split_exposed",
+    "unquote",
+]
