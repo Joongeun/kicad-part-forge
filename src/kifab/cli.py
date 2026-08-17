@@ -44,6 +44,7 @@ from .resolve.easyeda import (
     write_model,
 )
 from .resolve.easyeda import to_yaml as import_to_yaml
+from .fixes import fix_paths
 from .validate import Conformance, check_part, check_paths
 
 DEFAULT_PARTS = Path("parts")
@@ -600,6 +601,19 @@ def _httplib_command(args: argparse.Namespace) -> int:
 
 def _check_command(args: argparse.Namespace) -> int:
     targets = [Path(p) for p in args.targets] or [DEFAULT_PARTS]
+
+    if args.fix:
+        fixed = fix_paths(targets, dry_run=args.dry_run)
+        for path, changes in fixed.items():
+            print(f"{'would fix' if args.dry_run else 'fixed'} {path}", file=sys.stderr)
+            for change in changes:
+                print(f"    {change.describe()}", file=sys.stderr)
+        if not fixed:
+            print("kifab: nothing to fix", file=sys.stderr)
+        # Everything SCH002 flags that is not in the unambiguous list is still
+        # a warning below, which is the point: --fix clears the mechanical half
+        # and leaves the judgement half visible.
+
     conformance = None
     if not args.no_kicad_cli:
         conformance = Conformance.discover(args.kicad_cli)
@@ -757,6 +771,19 @@ def main(argv: list[str] | None = None) -> int:
         "--no-kicad-cli",
         action="store_true",
         help="skip the format conformance gate entirely",
+    )
+    check_parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="rewrite the corrections whose answer is forced — supply pins "
+        "named VCC/VDD/GND and the like become power_in. Names that are a "
+        "source on some parts and a sink on others (VOUT, VREF, VBAT, VBUS) "
+        "are never touched; they stay warnings for you to judge.",
+    )
+    check_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="with --fix, print the edits without writing them",
     )
     check_parser.set_defaults(func=_check_command)
 

@@ -114,6 +114,13 @@ class Part(BaseModel):
         }
         pin_numbers = {pin.number for pin in self.symbol.pins}
         missing = sorted(pin_numbers - pad_numbers)
+        # One exception, and only one: an exposed pad the drawing did not
+        # dimension. The symbol keeps its thermal pin so the netlist is right
+        # and the gap stays visible; FP008 blocks the part until somebody
+        # supplies the size. Widening this to any missing pad would delete the
+        # most valuable cross-check in the IR.
+        if missing:
+            missing = [n for n in missing if n not in self._undimensioned_ep_pins()]
         if missing:
             raise ValueError(
                 f"symbol pins {missing} have no matching pad in footprint "
@@ -127,6 +134,21 @@ class Part(BaseModel):
                 "'unspecified') so the netlist can reach them"
             )
         return self
+
+    def _undimensioned_ep_pins(self) -> set[str]:
+        """The one pin number an undimensioned exposed pad is allowed to owe.
+
+        Empty unless the package actually declares the gap, so this can only
+        ever excuse a pad somebody wrote `undimensioned: true` for.
+        """
+        spec = getattr(self.footprint.package, "exposed_pad", None)
+        if spec is None or not spec.undimensioned:
+            return set()
+        if spec.number:
+            return {spec.number}
+        # The default the emitter would have used: one past the perimeter.
+        lands = len([p for p in self.footprint.package.resolve_pads() if not p.aperture])
+        return {str(lands + 1)}
 
 
 def load_part(path: str | Path) -> Part:

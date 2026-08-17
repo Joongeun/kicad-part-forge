@@ -291,6 +291,33 @@ def check_footprint_name(part: Part) -> Report:
     return report
 
 
+def check_undimensioned_exposed_pad(part: Part) -> Report:
+    """SCH010 — a recorded gap is still a gap, and it blocks.
+
+    `undimensioned: true` exists so that "the drawing shows an exposed pad and
+    I could not read its size" is a document you can review, diff and finish,
+    rather than a failed run with nothing on disk. It is never a way to ship:
+    a footprint missing its thermal pad will not solder down, so this is an
+    ERROR and `--strict` is not what stops it.
+    """
+    report = Report()
+    spec = getattr(part.footprint.package, "exposed_pad", None)
+    if spec is None or not spec.undimensioned:
+        return report
+    report.add(
+        "SCH010",
+        Severity.ERROR,
+        "exposed pad is declared but not dimensioned, so no thermal copper was "
+        "emitted and the part cannot be fabricated. Read size_x and size_y off "
+        "the package drawing and replace `undimensioned: true` with them. The "
+        "GEO009 pin/pad mismatch below is this same gap seen from the emitted "
+        "files, which cannot know it was declared — one problem, two reports.",
+        where="footprint.package.exposed_pad",
+        layer=LAYER_IR,
+    )
+    return report
+
+
 IR_CHECKS = (
     check_reference,
     check_power_pins,
@@ -300,6 +327,7 @@ IR_CHECKS = (
     check_bom_agreement,
     check_package_dimensions,
     check_footprint_name,
+    check_undimensioned_exposed_pad,
 )
 
 

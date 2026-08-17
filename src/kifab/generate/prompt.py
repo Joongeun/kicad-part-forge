@@ -71,6 +71,11 @@ drawing marks it BSC/basic (i.e. exact).
   **each** of the left and right columns, `pitch:`, `lead_width:` (drawing
   `b`), `lead_length:` (drawing `L`), and, when the drawing shows one,
   `exposed_pad: {{size_x: <mm>, size_y: <mm>, paste_pads: [<nx>, <ny>]}}`.
+  If the drawing plainly shows an exposed pad but you cannot tell which
+  dimensions belong to it, write `exposed_pad: {{undimensioned: true}}` and say
+  in a `# NOTE:` which candidate readings you considered and why you rejected
+  them. That records the gap instead of guessing at it, and still keeps the
+  thermal pin in the symbol. Do **not** state a size you had to infer.
 * `dual_no_lead` — DFN/SON. As above but `pin_count:` instead of pins_x/pins_y.
 * `quad_gullwing` / `dual_gullwing` — QFP / SOIC / SOP / SOT. These have leads
   that extend past the body, so they need `lead_span` (the outside-to-outside

@@ -297,8 +297,16 @@ class ExposedPadSpec(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    size_x: float = Field(gt=0, description="Exposed-pad width, mm.")
-    size_y: float = Field(gt=0, description="Exposed-pad height, mm.")
+    size_x: float | None = Field(default=None, gt=0, description="Exposed-pad width, mm.")
+    size_y: float | None = Field(default=None, gt=0, description="Exposed-pad height, mm.")
+    undimensioned: bool = Field(
+        default=False,
+        description="The drawing shows an exposed pad but does not state a "
+        "dimension this document can support. Emits no copper, keeps the "
+        "symbol pin, and raises a blocking FP008 — so an honest gap is a "
+        "reviewable file with one hole in it rather than a hard failure with "
+        "nothing on disk. Never a way to ship a part: `check` refuses it.",
+    )
     number: str = Field(
         default="",
         description="Pad number. Empty means the next number after the "
@@ -324,6 +332,23 @@ class ExposedPadSpec(BaseModel):
     @classmethod
     def _coerce_number(cls, value: object) -> object:
         return coerce_designator(value)
+
+    @model_validator(mode="after")
+    def _dimensions_match_the_claim(self) -> ExposedPadSpec:
+        stated = self.size_x is not None and self.size_y is not None
+        if self.undimensioned and stated:
+            raise ValueError(
+                "exposed pad is marked `undimensioned` but also states "
+                f"{self.size_x}x{self.size_y} mm. Drop the flag if the drawing "
+                "gave you the size; drop the size if it did not."
+            )
+        if not self.undimensioned and not stated:
+            raise ValueError(
+                "exposed pad needs `size_x` and `size_y` in mm. If the drawing "
+                "genuinely does not state them, write `undimensioned: true` "
+                "instead — that is a recorded gap, not a guess."
+            )
+        return self
 
     @field_validator("paste_pads")
     @classmethod
@@ -395,7 +420,9 @@ class _NoLead(_PackageBase):
         return Tol.exact(value)
 
     def _ep(self) -> no_lead.ExposedPad | None:
-        if self.exposed_pad is None:
+        # An undimensioned pad is exactly as much copper as no pad at all. The
+        # difference is that the IR remembers one is missing, and FP008 says so.
+        if self.exposed_pad is None or self.exposed_pad.undimensioned:
             return None
         return no_lead.ExposedPad(
             size_x=self.exposed_pad.size_x,
@@ -411,7 +438,11 @@ class _NoLead(_PackageBase):
 
     def resolve_pads(self) -> list[Pad]:
         pads = [_from_land(p) for p in self._land().pads]
-        if self.exposed_pad is None or self.exposed_pad.paste_pads is None:
+        if (
+            self.exposed_pad is None
+            or self.exposed_pad.undimensioned
+            or self.exposed_pad.paste_pads is None
+        ):
             return pads
         # The copper pad keeps mask but hands its paste to the sub-apertures.
         copper = pads[-1]
@@ -420,7 +451,7 @@ class _NoLead(_PackageBase):
 
     @model_validator(mode="after")
     def _exposed_pad_clears_the_lands(self) -> _NoLead:
-        if self.exposed_pad is None:
+        if self.exposed_pad is None or self.exposed_pad.undimensioned:
             return self
         land = self._land()
         number = land.pads[-1].number

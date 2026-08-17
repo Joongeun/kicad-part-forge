@@ -74,6 +74,35 @@ uv run kifab build parts/24LC256.yaml -o /tmp/out
 
 Then point KiCad at `build/kifab.kicad_sym` and `build/kifab.pretty/`.
 
+### Two ways the tool handles a finding it *can* settle, and one it cannot
+
+```sh
+uv run kifab check parts/ --fix --dry-run   # see the edits
+uv run kifab check parts/ --fix             # apply them
+```
+
+`--fix` rewrites only the corrections whose answer is forced. A pin named
+`VCC`, `VDD`, `GND` or `AVDD` is a supply input on every part that has one, so
+SCH002 on those is arithmetic and the fixer does it. A pin named `VOUT`,
+`VREF`, `VBAT` or `VBUS` is a source on some parts and a sink on others — the
+datasheet settles it, not the name — so those are never touched and stay
+warnings for a human. The two lists are in `src/kifab/fixes.py` and a test
+asserts they do not overlap. Edits are made line by line on the text, so the
+`# NOTE:` comments an importer wrote survive.
+
+The opposite case is an answer the tool must *not* invent:
+
+```yaml
+exposed_pad: {undimensioned: true}
+```
+
+Some package drawings show a thermal pad without attaching a dimension to it
+that can be read unambiguously. This states that, emits no thermal copper,
+keeps the pin in the symbol, and raises a **blocking** `SCH010`. It exists so
+that "correct geometry with one documented hole" is a file you can review,
+diff and finish — rather than a failed run with nothing on disk. It is never a
+way to ship: `kifab check` refuses it by default, not only under `--strict`.
+
 ## Reuse before you generate (tier T0)
 
 KiCad ships **22,387 symbols and 15,179 footprints**, and they are KLC-clean.
