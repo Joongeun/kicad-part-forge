@@ -17,10 +17,20 @@ from .index import Index, LibraryRoot, default_db_path, default_roots
 from .ir import load_part
 from .resolve import MatchSet, search
 from .resolve.adopt import AdoptionError, adopt, to_yaml
-from .validate import Conformance, check_paths
+from .resolve.easyeda import (
+    DEFAULT_MODEL_VAR,
+    EasyEdaClient,
+    EasyEdaError,
+    fetch_part,
+    import_component,
+    write_model,
+)
+from .resolve.easyeda import to_yaml as import_to_yaml
+from .validate import Conformance, check_part, check_paths
 
 DEFAULT_PARTS = Path("parts")
 DEFAULT_OUT = Path("build")
+DEFAULT_MODELS = Path("models")
 
 
 def _build_command(args: argparse.Namespace) -> int:
@@ -227,6 +237,90 @@ def _adopt_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _lcsc_command(args: argparse.Namespace) -> int:
+    """T1 — import an LCSC/EasyEDA part into the IR.
+
+    EasyEDA is an ingester: nothing it returns reaches the user's library
+    directly. It lands in `parts/<MPN>.yaml`, from where our own emitters
+    rebuild it in house style.
+    """
+    client = EasyEdaClient()
+    models_dir = None if args.no_model else Path(args.models)
+
+    try:
+        if args.list:
+            candidates = client.search(args.query, limit=args.limit)
+            if not candidates:
+                print(f"kifab: nothing on LCSC matched {args.query!r}", file=sys.stderr)
+                return 1
+            for candidate in candidates:
+                print(candidate)
+            return 0
+
+        if args.payload:
+            payload = json.loads(Path(args.payload).read_text(encoding="utf-8"))
+            payload = payload.get("result", payload)
+            imported = import_component(
+                payload,
+                library=args.library,
+                bond_extra_pads=args.bond_extra_pads,
+            )
+            model = None
+        else:
+            imported, model = fetch_part(
+                args.query,
+                client=client,
+                library=args.library,
+                models_dir=models_dir,
+                model_variable=args.model_var,
+                bond_extra_pads=args.bond_extra_pads,
+            )
+    except EasyEdaError as exc:
+        print(f"kifab: {exc}", file=sys.stderr)
+        return 1
+
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    target = out_dir / f"{imported.part.mpn}.yaml"
+    if target.exists() and not args.force:
+        print(
+            f"kifab: {target} already exists (use --force to overwrite)",
+            file=sys.stderr,
+        )
+        return 1
+
+    if model is not None and models_dir is not None:
+        path = write_model(
+            model, models_dir, args.library, imported.part.footprint.name
+        )
+        print(path)
+        print(
+            f"kifab: 3D model written to {path}. Point KiCad's "
+            f"{args.model_var} path variable at {models_dir}/ "
+            "(Preferences > Configure Paths).",
+            file=sys.stderr,
+        )
+
+    target.write_text(import_to_yaml(imported), encoding="utf-8")
+    print(target)
+    for note in imported.notes:
+        print(f"    note: {note}", file=sys.stderr)
+
+    # An import that cannot pass the linter is not done. Run the same gate the
+    # build runs, on the part we just wrote, and say so out loud.
+    report = check_part(imported.part)
+    text = report.format()
+    if text:
+        print(text, file=sys.stderr)
+    print(
+        f"kifab: imported LCSC {imported.lcsc} into {target} — "
+        f"kifab check: {'OK' if report.ok() else 'FAILED'}, {report.summary()}. "
+        "Review it, then `kifab build`.",
+        file=sys.stderr,
+    )
+    return 0 if report.ok() else 1
+
+
 def _check_command(args: argparse.Namespace) -> int:
     targets = [Path(p) for p in args.targets] or [DEFAULT_PARTS]
     conformance = None
@@ -387,6 +481,55 @@ def main(argv: list[str] | None = None) -> int:
     adopt_parser.add_argument("--root", action="append", help=argparse.SUPPRESS)
     adopt_parser.add_argument("--db", help=argparse.SUPPRESS)
     adopt_parser.set_defaults(func=_adopt_command)
+
+    # -- T1: LCSC / EasyEDA --------------------------------------------
+    lcsc_parser = sub.add_parser(
+        "lcsc",
+        help="import a part from LCSC/EasyEDA into this project as IR YAML (tier T1)",
+        description="EasyEDA is an ingester, not a generator: its data is "
+        "normalised into the Part IR and re-emitted by kifab's own emitters in "
+        "house style, so an imported part is linted, restyled and correctable "
+        "like any other. Writes parts/<MPN>.yaml and, when EasyEDA has one, a "
+        "STEP model. Anything that could not be normalised provably is written "
+        "into the file as a NOTE rather than guessed at.",
+    )
+    lcsc_parser.add_argument(
+        "query", help="an LCSC code (C2040) or an exact MPN (RP2040)"
+    )
+    lcsc_parser.add_argument(
+        "--list",
+        action="store_true",
+        help="list the LCSC candidates for this query and stop",
+    )
+    lcsc_parser.add_argument("--limit", type=int, default=8)
+    lcsc_parser.add_argument("--library", default="kifab")
+    lcsc_parser.add_argument("-o", "--out", default=str(DEFAULT_PARTS))
+    lcsc_parser.add_argument("--force", action="store_true")
+    lcsc_parser.add_argument(
+        "--models",
+        default=str(DEFAULT_MODELS),
+        help=f"where to write fetched 3D models (default: {DEFAULT_MODELS}/)",
+    )
+    lcsc_parser.add_argument(
+        "--model-var",
+        default=DEFAULT_MODEL_VAR,
+        help="KiCad path variable the model reference is written relative to "
+        f"(default: {DEFAULT_MODEL_VAR})",
+    )
+    lcsc_parser.add_argument(
+        "--no-model", action="store_true", help="do not fetch a 3D model"
+    )
+    lcsc_parser.add_argument(
+        "--bond-extra-pads",
+        action="store_true",
+        help="when EasyEDA's footprint has pads its symbol has no pin for, "
+        "synthesise explicitly-unverified pins so the netlist can reach them",
+    )
+    lcsc_parser.add_argument(
+        "--payload",
+        help="import from a saved EasyEDA component JSON instead of the network",
+    )
+    lcsc_parser.set_defaults(func=_lcsc_command)
 
     args = parser.parse_args(argv)
     return args.func(args)

@@ -25,3 +25,7 @@ packages = ["src/kifab"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+# The suite must run with no network. Tests that talk to LCSC/EasyEDA are
+# marked `live` and deselected by default; run them with `pytest -m live`.
+addopts = "-m 'not live'"
+markers = ["live: needs the internet (LCSC/EasyEDA); deselected by default"]

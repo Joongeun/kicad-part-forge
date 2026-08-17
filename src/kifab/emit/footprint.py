@@ -25,6 +25,7 @@ against `LQFP-48_7x7mm_P0.5mm`, whose corner ticks this reproduces exactly.
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass
 
 from ..ir import MountType, Pad, PadType, Part
@@ -234,6 +235,18 @@ def _property_node(
     return node
 
 
+def _pad_order(number: str) -> tuple:
+    """Natural sort key for a pad number: `2` before `10`, `A1` before `B1`.
+
+    Pad numbers are strings because they are not all integers (BGA `A1`, an
+    exposed pad called `EP`), so a plain sort would put pad 10 before pad 2.
+    """
+    return tuple(
+        (1, int(chunk), "") if chunk.isdigit() else (0, 0, chunk)
+        for chunk in re.findall(r"\d+|\D+", number)
+    ) or ((0, 0, ""),)
+
+
 def _pad_node(pad: Pad, uuid: str) -> Node:
     at: Node = ["at", fmt_num(_round(pad.at[0])), fmt_num(_round(pad.at[1]))]
     if pad.rotation:
@@ -252,6 +265,14 @@ def _pad_node(pad: Pad, uuid: str) -> Node:
 
     layers = pad.layers if pad.layers is not None else _DEFAULT_LAYERS[pad.type]
     node.append(["layers", *[quote(layer) for layer in layers]])
+
+    if pad.type in (PadType.THRU_HOLE, PadType.NP_THRU_HOLE):
+        # Canonical form for a through-hole pad, measured the same way as the
+        # rest: `kicad-cli fp upgrade` inserts this and the official
+        # `Connector_PinHeader_2.54mm` footprints carry it. Only Phase 4's
+        # first through-hole part (a DO-41 diode from LCSC) reached it — the
+        # corpus had been all-SMD until then.
+        node.append(["remove_unused_layers", "no"])
 
     if pad.shape.value == "roundrect":
         ratio = pad.roundrect_ratio
@@ -532,7 +553,14 @@ def footprint_node(part: Part) -> Node:
     )
 
     # --- copper -----------------------------------------------------------
-    for pad in pads:
+    # Pads are written in ascending pad-number order, which is another of
+    # kicad-cli's undocumented canonical-form rules (measured: feed it a
+    # footprint whose pads are in any other order and `fp upgrade` rewrites
+    # every one of them). Every part before Phase 4 happened to declare its
+    # pads in order already, so this only surfaced with an EasyEDA import,
+    # whose exposed pad is stated first. The sort is stable, so pads sharing a
+    # number (a thermal-via variant) keep their relative order.
+    for pad in sorted(pads, key=lambda p: _pad_order(p.number)):
         node.append(_pad_node(pad, uuids.named("pad", pad.number)))
 
     node.append(["embedded_fonts", "no"])

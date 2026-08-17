@@ -436,7 +436,13 @@ def _flow(mapping: dict) -> str:
             needs_quotes = value == "" or " " in value or _looks_numeric(value)
             rendered = f'"{value}"' if needs_quotes else value
         elif isinstance(value, list):
-            rendered = "[" + ", ".join(f"{v:g}" for v in value) + "]"
+            rendered = (
+                "["
+                + ", ".join(
+                    f'"{v}"' if isinstance(v, str) else f"{v:g}" for v in value
+                )
+                + "]"
+            )
         elif isinstance(value, bool):
             rendered = "true" if value else "false"
         elif isinstance(value, float):
@@ -448,23 +454,28 @@ def _flow(mapping: dict) -> str:
 
 
 def to_yaml(adoption: Adoption) -> str:
-    """Render the adopted part as reviewable YAML, in the house layout.
-
-    Hand-rolled rather than `yaml.safe_dump` for one reason: the pin table and
-    the pad table are what a human actually reviews, and they are only
-    reviewable one-record-per-line.
-    """
-    part = adoption.part
-    lines = [
+    """Render the adopted part as reviewable YAML, in the house layout."""
+    header = [
         "# Adopted from the local KiCad corpus by `kifab adopt` (T0 reuse).",
         f"# footprint: {adoption.footprint_source}",
     ]
     if adoption.symbol_source:
-        lines.append(f"# symbol:    {adoption.symbol_source}")
-    lines.append("#")
+        header.append(f"# symbol:    {adoption.symbol_source}")
+    header.append("#")
     for note in adoption.notes:
-        lines.append(f"# NOTE: {note}")
-    lines.append("")
+        header.append(f"# NOTE: {note}")
+    return render_part_yaml(adoption.part, header)
+
+
+def render_part_yaml(part: Part, header: list[str]) -> str:
+    """Render a `Part` as reviewable YAML in the house layout.
+
+    Hand-rolled rather than `yaml.safe_dump` for one reason: the pin table and
+    the pad table are what a human actually reviews, and they are only
+    reviewable one-record-per-line. Shared by every ingester (T0 adoption, T1
+    LCSC import) so a part reads the same whatever tier produced it.
+    """
+    lines = [*header, ""]
 
     dumped = part.model_dump(mode="json", exclude_defaults=True)
     for key in ("mpn", "manufacturer", "library", "reference", "value"):
@@ -490,7 +501,7 @@ def to_yaml(adoption: Adoption) -> str:
     lines.append("footprint:")
     footprint = dumped.get("footprint", {})
     lines.append(f"  name: {footprint['name']}")
-    for key in ("description", "tags"):
+    for key in ("description", "tags", "model"):
         if footprint.get(key):
             lines.append(f"  {key}: {_scalar(footprint[key])}")
     package = footprint["package"]

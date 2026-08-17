@@ -58,6 +58,37 @@ stated blocks confidence just as hard as one that disagrees. `.confident` and
 `.review` are separate lists in the API too; there is no combined accessor to
 take `[0]` from by accident.
 
+## Import from LCSC / EasyEDA (tier T1)
+
+For the parts KiCad doesn't ship — most of the JLCPCB assembly catalogue —
+EasyEDA has geometry. It is used as an **ingester, never as a generator**:
+nothing it returns reaches your library. It lands in `parts/<MPN>.yaml`, and
+kifab's own emitters rebuild it in house style, lint it and restyle it.
+
+```sh
+uv run kifab lcsc C2040                  # by LCSC code
+uv run kifab lcsc TL072CDT               # by exact MPN
+uv run kifab lcsc RP2040 --list          # ambiguous? see the candidates
+```
+
+It writes the part, fetches the STEP model into `models/<library>.3dshapes/`,
+and runs `kifab check` on what it wrote before it claims success.
+
+**What it will not do is guess.** Pad rotations of 90/270 are folded into the
+pad size (exactly equivalent copper); pin numbers come from the *drawn* number,
+not EasyEDA's sequence field, which disagrees with it on real parts; the body
+comes from the `L…-W…` in the package name, with the drawing used only to
+decide which dimension is which axis. Anything that could not be normalised
+provably — an unstated body size, a slotted hole, a 3D model that wants an
+offset, EasyEDA's famously loose pin electrical types — is written into the
+file as a `# NOTE:` and reported by the linter. A polygon pad is refused
+outright rather than approximated. See `easyeda.NORMALISATIONS` and
+`easyeda.NOT_NORMALISED`.
+
+Expect an imported part to carry warnings. That is the point: `kifab check`
+passing with `SCH002 pin "1" (GND) … is typed 'unspecified'` is the tool
+telling you exactly which line to fix.
+
 ## Check it
 
 ```sh
@@ -140,7 +171,7 @@ carries its semantics in its `description`.
 | `src/kifab/emit/` | S-expression writer + `.kicad_sym` / `.kicad_mod` emitters |
 | `src/kifab/ipc/` | IPC-7351B land arithmetic and package families |
 | `src/kifab/index/` | SQLite/FTS index over the local corpus + package identity |
-| `src/kifab/resolve/` | resolver tiers; `local.py` is T0, `adopt.py` turns a hit into IR |
+| `src/kifab/resolve/` | resolver tiers; `local.py`/`adopt.py` are T0, `easyeda.py` is T1 |
 | `src/kifab/validate/` | schema lint, geometry sanity, KLC, the `kicad-cli` gate |
 | `src/kifab/uuids.py` | derived (never random) UUIDs |
 | `parts/` | the part corpus |
