@@ -1,0 +1,100 @@
+# ST STM32F103C8T6 in LQFP-48 — the four-sided, high-pin-count case.
+#
+# Exercises the parts of the pipeline the SOIC-8 example does not: quad
+# gull-wing land computation, a 48-pin symbol, and explicit slots used to leave
+# gaps between functional pin groups.
+#
+# Pin table cross-checked against KiCad's own MCU_ST_STM32F1 symbol
+# (STM32F103C_8-B_Tx), which ships with KiCad 9.0.4 — all 48 number/name pairs
+# agree.
+
+mpn: STM32F103C8T6
+manufacturer: STMicroelectronics
+library: kifab
+reference: U
+datasheet: https://www.st.com/resource/en/datasheet/stm32f103c8.pdf
+description: ARM Cortex-M3 MCU, 64 KB flash, 20 KB RAM, 72 MHz, LQFP-48
+
+symbol:
+  keywords: ARM Cortex-M3 STM32 microcontroller
+  fp_filters:
+    - LQFP*7x7mm*P0.5mm*
+  style:
+    # Names are short; without a floor the auto-sized body would be narrower
+    # than the five supply pins along the top need.
+    min_body_width: 15.24
+  pins:
+    # --- left: reset, boot, oscillator, port C, port A -------------------
+    - { number: 7, name: NRST, type: input, side: left, slot: 0 }
+    - { number: 44, name: BOOT0, type: input, side: left, slot: 1 }
+
+    - { number: 5, name: PD0, type: bidirectional, side: left, slot: 3 }
+    - { number: 6, name: PD1, type: bidirectional, side: left, slot: 4 }
+
+    - { number: 2, name: PC13, type: bidirectional, side: left, slot: 6 }
+    - { number: 3, name: PC14, type: bidirectional, side: left, slot: 7 }
+    - { number: 4, name: PC15, type: bidirectional, side: left, slot: 8 }
+
+    - { number: 10, name: PA0, type: bidirectional, side: left, slot: 10 }
+    - { number: 11, name: PA1, type: bidirectional, side: left, slot: 11 }
+    - { number: 12, name: PA2, type: bidirectional, side: left, slot: 12 }
+    - { number: 13, name: PA3, type: bidirectional, side: left, slot: 13 }
+    - { number: 14, name: PA4, type: bidirectional, side: left, slot: 14 }
+    - { number: 15, name: PA5, type: bidirectional, side: left, slot: 15 }
+    - { number: 16, name: PA6, type: bidirectional, side: left, slot: 16 }
+    - { number: 17, name: PA7, type: bidirectional, side: left, slot: 17 }
+    - { number: 29, name: PA8, type: bidirectional, side: left, slot: 18 }
+    - { number: 30, name: PA9, type: bidirectional, side: left, slot: 19 }
+    - { number: 31, name: PA10, type: bidirectional, side: left, slot: 20 }
+    - { number: 32, name: PA11, type: bidirectional, side: left, slot: 21 }
+    - { number: 33, name: PA12, type: bidirectional, side: left, slot: 22 }
+    - { number: 34, name: PA13, type: bidirectional, side: left, slot: 23 }
+    - { number: 37, name: PA14, type: bidirectional, side: left, slot: 24 }
+    - { number: 38, name: PA15, type: bidirectional, side: left, slot: 25 }
+
+    # --- right: port B ----------------------------------------------------
+    - { number: 18, name: PB0, type: bidirectional, side: right, slot: 0 }
+    - { number: 19, name: PB1, type: bidirectional, side: right, slot: 1 }
+    - { number: 20, name: PB2, type: bidirectional, side: right, slot: 2 }
+    - { number: 39, name: PB3, type: bidirectional, side: right, slot: 3 }
+    - { number: 40, name: PB4, type: bidirectional, side: right, slot: 4 }
+    - { number: 41, name: PB5, type: bidirectional, side: right, slot: 5 }
+    - { number: 42, name: PB6, type: bidirectional, side: right, slot: 6 }
+    - { number: 43, name: PB7, type: bidirectional, side: right, slot: 7 }
+    - { number: 45, name: PB8, type: bidirectional, side: right, slot: 8 }
+    - { number: 46, name: PB9, type: bidirectional, side: right, slot: 9 }
+    - { number: 21, name: PB10, type: bidirectional, side: right, slot: 10 }
+    - { number: 22, name: PB11, type: bidirectional, side: right, slot: 11 }
+    - { number: 25, name: PB12, type: bidirectional, side: right, slot: 12 }
+    - { number: 26, name: PB13, type: bidirectional, side: right, slot: 13 }
+    - { number: 27, name: PB14, type: bidirectional, side: right, slot: 14 }
+    - { number: 28, name: PB15, type: bidirectional, side: right, slot: 15 }
+
+    # --- top: supplies ----------------------------------------------------
+    - { number: 1, name: VBAT, type: power_in, side: top, slot: 0 }
+    - { number: 9, name: VDDA, type: power_in, side: top, slot: 1 }
+    - { number: 24, name: VDD1, type: power_in, side: top, slot: 2 }
+    - { number: 36, name: VDD2, type: power_in, side: top, slot: 3 }
+    - { number: 48, name: VDD3, type: power_in, side: top, slot: 4 }
+
+    # --- bottom: returns --------------------------------------------------
+    - { number: 8, name: VSSA, type: power_in, side: bottom, slot: 0 }
+    - { number: 23, name: VSS1, type: power_in, side: bottom, slot: 1 }
+    - { number: 35, name: VSS2, type: power_in, side: bottom, slot: 2 }
+    - { number: 47, name: VSS3, type: power_in, side: bottom, slot: 3 }
+
+footprint:
+  name: LQFP-48_7x7mm_P0.5mm
+  description: LQFP, 48 pin, 7x7 mm body, 1.4 mm height, 0.5 mm pitch (JEDEC MS-026 BBC), IPC-7351B nominal density
+  tags: LQFP QFP
+  model: ${KICAD9_3DMODEL_DIR}/Package_QFP.3dshapes/LQFP-48_7x7mm_P0.5mm.step
+  package:
+    family: quad_gullwing
+    pin_count: 48
+    pitch: 0.5
+    body: { x: 7.0, y: 7.0 }
+    # JEDEC MS-026 BBC: D/E (lead span) 9.00 basic — exact, no tolerance.
+    lead_span: { x: 9.0, y: 9.0 }
+    lead_width: 0.17 .. 0.27
+    lead_length: 0.45 .. 0.75
+    density: nominal

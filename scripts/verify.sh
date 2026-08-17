@@ -12,27 +12,34 @@ fail=0
 step() { printf '\n\033[1m==> %s\033[0m\n' "$1"; }
 warn() { printf '\033[33m    skip: %s\033[0m\n' "$1"; }
 
-step "Test suite (S-expression round-trip, IPC geometry)"
+step "Build the part corpus"
+uv run kifab build parts/ -o build || fail=1
+
+step "Test suite (IR, emitters, golden files, S-expression round-trip, IPC geometry)"
 uv run pytest -q || fail=1
 
 step "KiCad format conformance"
 if [[ -x "$KICAD_CLI" ]]; then
-  # Every generated footprint must survive KiCad's own parser. `fp upgrade`
-  # exits non-zero on a parse error, which is the conformance gate.
+  # `upgrade` rewrites in place, so run it on a copy: the gate must not mutate
+  # the artefacts it is judging.
+  scratch="$(mktemp -d)"
+  trap 'rm -rf "$scratch"' EXIT
+  cp -R build/. "$scratch/" 2>/dev/null || true
+
   shopt -s nullglob
-  pretty_dirs=(build/*.pretty)
+  pretty_dirs=("$scratch"/*.pretty)
   if (( ${#pretty_dirs[@]} == 0 )); then
     warn "no generated libraries in build/ yet"
   else
     for dir in "${pretty_dirs[@]}"; do
-      echo "    $dir"
+      echo "    $(basename "$dir")"
       "$KICAD_CLI" fp upgrade --force "$dir" || fail=1
     done
   fi
 
-  sym_libs=(build/*.kicad_sym)
+  sym_libs=("$scratch"/*.kicad_sym)
   for lib in ${sym_libs[@]+"${sym_libs[@]}"}; do
-    echo "    $lib"
+    echo "    $(basename "$lib")"
     "$KICAD_CLI" sym upgrade --force "$lib" || fail=1
   done
 else

@@ -1,0 +1,45 @@
+# Microchip 24LC256 I2C EEPROM in SOIC-8 — the multi-pin IC case.
+#
+# The footprint is computed: the YAML states the JEDEC MS-012AA mechanical
+# dimensions and IPC-7351B produces the lands. tests/test_emit_footprint.py
+# asserts the result is identical to the land geometry KiCad itself ships for
+# SOIC-8_3.9x4.9mm_P1.27mm.
+
+mpn: 24LC256
+manufacturer: Microchip
+library: kifab
+reference: U
+datasheet: http://ww1.microchip.com/downloads/en/devicedoc/21203m.pdf
+description: I2C Serial EEPROM, 256 Kbit (32k x 8), 1.7-5.5 V, SOIC-8
+
+symbol:
+  keywords: I2C serial EEPROM memory
+  fp_filters:
+    - SOIC*3.9x4.9mm*P1.27mm*
+  pins:
+    # Slots are explicit so the address pins stay top-aligned with the bus
+    # pins opposite them even if a pin is added later.
+    - { number: 1, name: A0, type: input, side: left, slot: 0 }
+    - { number: 2, name: A1, type: input, side: left, slot: 1 }
+    - { number: 3, name: A2, type: input, side: left, slot: 2 }
+    - { number: 5, name: SDA, type: bidirectional, side: right, slot: 0 }
+    - { number: 6, name: SCL, type: input, side: right, slot: 1 }
+    - { number: 7, name: WP, type: input, side: right, slot: 2 }
+    - { number: 8, name: VCC, type: power_in, side: top }
+    - { number: 4, name: VSS, type: power_in, side: bottom }
+
+footprint:
+  name: SOIC-8_3.9x4.9mm_P1.27mm
+  description: SOIC, 8 pin, 3.9x4.9 mm body, 1.27 mm pitch (JEDEC MS-012AA), IPC-7351B nominal density
+  tags: SOIC SO
+  model: ${KICAD9_3DMODEL_DIR}/Package_SO.3dshapes/SOIC-8_3.9x4.9mm_P1.27mm.step
+  package:
+    family: dual_gullwing
+    pin_count: 8
+    pitch: 1.27
+    body: { x: 3.9, y: 4.9 }
+    # JEDEC MS-012AA: E (lead span) 6.00 +/- 0.20, b 0.31..0.51, L 0.40..1.27.
+    lead_span: { nominal: 6.0, tolerance: 0.2 }
+    lead_width: 0.31 .. 0.51
+    lead_length: 0.40 .. 1.27
+    density: nominal

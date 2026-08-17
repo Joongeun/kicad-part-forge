@@ -105,3 +105,31 @@ IR, which is what makes the golden-file gate meaningful.
 
 **Consequence.** Two different parts never collide (identity is in the hash), and
 regenerating an unchanged part is a no-op in version control.
+
+## Phase 1 — Phase 1: the Part IR stores conventions, not coordinates (2026-08-17)
+
+- **Lead.** Pins declare a `side` + optional `slot`; packages declare datasheet dimensions. Coordinates are computed by the emitters, never stored in the IR.
+- **Why.** Three things fall out of it that a coordinate-based IR cannot give: house style (grid, pin length, text sizes, silk offsets) is a one-place change; an off-grid pin is *inexpressible*, so KLC's 100 mil rule holds by construction; and the YAML diffs as a pin table rather than a drawing.
+- **Escape hatches, named so review can see them.** `CustomPackage` (lands stated directly — also the target an EasyEDA/vendor importer lands in), `SymbolStyle.body_width/body_height`, and `Pin.length`. An IR that cannot represent its inputs is not a contract, so the escape hatch is deliberate; making it conspicuous is what stops it becoming the default.
+- **`extra="forbid"` everywhere.** A typo'd key that is silently ignored ships a part with a wrong value. It must fail loudly.
+- **The IR cross-checks its two halves.** Every symbol pin must have a matching footprint pad and vice versa. A symbol/footprint pair that disagrees about pin numbers routes a board wrong and nothing downstream notices.
+
+## Phase 1 — Emit KiCad's canonical form, not merely something it accepts (2026-08-17)
+
+- **Lead.** Both emitters produce output that `kicad-cli … upgrade --force` rewrites **byte-for-byte identically**, apart from the `(generator …)` token it stamps with its own name. `tests/test_conformance.py` asserts exactly that, on every part in the corpus.
+- **Why this is stronger than "it parses".** A file KiCad merely accepts still gets rewritten the first time someone opens it in the GUI, so a part edited by hand and a part regenerated from the IR would show a diff of pure noise. Being a fixed point makes that diff meaningful.
+- **What it cost.** Three ordering rules, discovered by diffing: footprint `fp_line`s are sorted by start point; symbol pins are sorted by (x ascending, y descending); user properties (`Manufacturer`, `MPN`) come *before* the `ki_*` ones. None of these are documented anywhere — they were measured.
+- **Symbol form, established the same way as the Phase 0 footprint form.** `(generator_version "9.0")`; per symbol `(exclude_from_sim)(in_bom)(on_board)` before the properties; Reference/Value/Footprint/Datasheet/Description always present; `(effects (font (size …)))` on every pin name and number; `(embedded_fonts no)` closing each symbol. Symbols carry **no UUIDs** — that is KiCad's rule, not an omission.
+
+## Phase 1 — Pin grid beats body symmetry (2026-08-17)
+
+- **Lead.** Symbol bodies are sized so that *half* the width and *half* the height are whole grid steps, and pins are placed at whole grid steps from the origin. When a side has an even number of pins the group therefore sits half a step off-centre.
+- **Why.** KLC requires pins on the 100 mil grid and wiring depends on it; body symmetry is cosmetic. Centring the group instead would put every pin on a 50 mil offset whenever the pin count is even — which is what KiCad's own `Device:R` does, but not what its 48-pin `STM32F103C_8-B_Tx` does (checked: all 48 pins on 100 mil, body symmetric, some pins outside the body).
+- **Consequence.** `SymbolStyle.body_width`/`body_height` overrides can break the guarantee, so their field docs say so. `tests/test_emit_symbol.py` holds the invariant for pin counts 1..26.
+
+## Phase 1 — Chip (two-terminal) IPC maths is NOT owned yet — deferred, not forgotten (2026-08-17)
+
+- **Lead.** `parts/BLM31PG601SN1L.yaml` (1206 ferrite bead) uses `family: custom` with lands stated directly, not computed.
+- **Why.** The vendored `vendor/ipc/ipc7351B_2terminal.yaml` tables exist, but a spike against the shipped `R_0805_2012Metric` did **not** reproduce its geometry from any plausible reading of the IPC-SM-782 body dimensions: solving for Zmax works (L = 2.00 ± 0.10 gives 2.85 exactly), solving for Gmin does not — the shipped 0.80 needs an inner-span input the size tables do not state. KiCad's chip generator evidently takes the lead *separation* S directly rather than deriving it from a termination length.
+- **Consequence.** Do not add a `chip` family until that input is identified and the result is diffed against the shipped 0402/0603/0805/1206 footprints, the same gate Phase 0b applied to gull-wing. Emitting plausible-but-unverified chip pads is exactly the silent failure this project exists to prevent.
+- **Also deferred from Phase 1:** no-lead (QFN/DFN) families and exposed pads, non-rectangular symbol graphics, and thermal/paste-relief options on pads.

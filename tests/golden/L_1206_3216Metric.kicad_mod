@@ -1,0 +1,176 @@
+(footprint "L_1206_3216Metric"
+	(version 20241229)
+	(generator "kifab")
+	(generator_version "9.0")
+	(layer "F.Cu")
+	(descr "Inductor SMD 1206 (3216 Metric), IPC-7351 nominal density")
+	(tags "inductor ferrite bead 1206 3216Metric")
+	(property "Reference" "REF**"
+		(at 0 -2.2 0)
+		(layer "F.SilkS")
+		(uuid "79397bc1-cd3c-507c-b113-40d75f0dfca8")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "L_1206_3216Metric"
+		(at 0 2.2 0)
+		(layer "F.Fab")
+		(uuid "40e87b98-3ad3-52bd-a253-010ad3ff25f8")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" "https://search.murata.co.jp/Ceramy/image/img/A01X/G101/ENG/BLM31PG601SN1.pdf"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "4d6845d3-ea9b-5c2c-8498-847eec28849b")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" "Inductor SMD 1206 (3216 Metric), IPC-7351 nominal density"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "22e5abc0-b0aa-55b3-86b2-b7e0973a0704")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd)
+	(fp_line
+		(start -0.79 -0.91)
+		(end 0.79 -0.91)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "042a945a-d4b8-5db0-8df5-303aaad47ca3")
+	)
+	(fp_line
+		(start -0.79 0.91)
+		(end 0.79 0.91)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "8b75e21a-e702-5813-8557-a667b8a4a985")
+	)
+	(fp_poly
+		(pts
+			(xy -2.36 0) (xy -2.86 -0.25) (xy -2.86 0.25)
+		)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(fill yes)
+		(layer "F.SilkS")
+		(uuid "e8d26294-936e-5f34-b974-c9754e8b7581")
+	)
+	(fp_line
+		(start -2.35 -1.2)
+		(end 2.35 -1.2)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "c407bdc0-e2fa-54cb-bdd7-92d77bc2a263")
+	)
+	(fp_line
+		(start -2.35 1.2)
+		(end -2.35 -1.2)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "16db7a56-8937-5328-ac4b-79fb1644b59a")
+	)
+	(fp_line
+		(start 2.35 -1.2)
+		(end 2.35 1.2)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "e7320ffb-bae1-52ec-b9c4-d689a9fc86d4")
+	)
+	(fp_line
+		(start 2.35 1.2)
+		(end -2.35 1.2)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "183f1ffd-19cd-5921-9835-68f69e9a8633")
+	)
+	(fp_poly
+		(pts
+			(xy -1.6 -0.4) (xy -1.6 0.8) (xy 1.6 0.8) (xy 1.6 -0.8) (xy -1.2 -0.8)
+		)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.Fab")
+		(uuid "1360e9ed-f5b8-552b-8d0a-f9e5a6525fd2")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "5ad3c160-9d4e-5b78-a281-90286b176d99")
+		(effects
+			(font
+				(size 0.4 0.4)
+				(thickness 0.06)
+			)
+		)
+	)
+	(pad "1" smd roundrect
+		(at -1.575 0)
+		(size 1.05 1.9)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(roundrect_rratio 0.238095)
+		(uuid "239ce3d8-60b5-5340-8717-e8f2183c5da4")
+	)
+	(pad "2" smd roundrect
+		(at 1.575 0)
+		(size 1.05 1.9)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(roundrect_rratio 0.238095)
+		(uuid "c8037c60-880b-5689-ae01-9e360b4f72d8")
+	)
+	(embedded_fonts no)
+	(model "${KICAD9_3DMODEL_DIR}/Inductor_SMD.3dshapes/L_1206_3216Metric.step"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 0)
+		)
+	)
+)

@@ -1,0 +1,46 @@
+# Murata BLM31 series ferrite bead — the simple two-terminal case.
+#
+# The footprint uses the `custom` family: chip land patterns are not IPC-7351
+# gull-wing geometry, and kifab does not yet own the chip arithmetic (see
+# ROADMAP / Phase 5). Stating the lands directly is the honest representation
+# for a hand-written part, and it exercises the IR's escape hatch.
+#
+# Land geometry: IPC-7351 nominal density for 1206 (3216 Metric), as published
+# in the official KiCad library (Inductor_SMD.pretty/L_1206_3216Metric).
+
+mpn: BLM31PG601SN1L
+manufacturer: Murata
+library: kifab
+reference: FB
+value: "600R@100MHz"
+datasheet: https://search.murata.co.jp/Ceramy/image/img/A01X/G101/ENG/BLM31PG601SN1.pdf
+description: Ferrite bead, 600 ohm at 100 MHz, 3 A, 1206 (3216 Metric)
+
+symbol:
+  keywords: ferrite bead emi filter choke
+  fp_filters:
+    - L_*1206*
+    - L_*3216*
+  style:
+    # A two-terminal passive shows neither pin numbers nor pin names, and its
+    # body is a wide, short rectangle rather than the default square.
+    hide_pin_numbers: true
+    hide_pin_names: true
+    body_width: 5.08
+    body_height: 2.54
+  pins:
+    - { number: 1, side: left, type: passive }
+    - { number: 2, side: right, type: passive }
+
+footprint:
+  name: L_1206_3216Metric
+  description: Inductor SMD 1206 (3216 Metric), IPC-7351 nominal density
+  tags: inductor ferrite bead 1206 3216Metric
+  model: ${KICAD9_3DMODEL_DIR}/Inductor_SMD.3dshapes/L_1206_3216Metric.step
+  package:
+    family: custom
+    body: { x: 3.2, y: 1.6 }
+    courtyard: 0.25
+    pads:
+      - { number: "1", at: [-1.575, 0], size: [1.05, 1.9] }
+      - { number: "2", at: [1.575, 0], size: [1.05, 1.9] }
