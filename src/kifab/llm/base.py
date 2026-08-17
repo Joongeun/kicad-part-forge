@@ -67,6 +67,16 @@ class ExtractionResult:
     raw: str = ""
 
 
+def slice_name(mpn: str) -> str:
+    """The sandbox filename the page slice is written under.
+
+    One definition, because two providers disagreeing about it is exactly the
+    bug this function exists to prevent: `extract` writes the file and the
+    prompt has to name the same one.
+    """
+    return f"{mpn}.slice.pdf"
+
+
 class LLMProvider(abc.ABC):
     """Base class. Subclasses implement `_run` and nothing else."""
 
@@ -74,6 +84,17 @@ class LLMProvider(abc.ABC):
 
     #: Whether this provider can actually produce anything.
     available: ClassVar[bool] = True
+
+    def source_clause(self, mpn: str) -> str:
+        """How this provider delivers the pages, in the prompt's own words.
+
+        Providers differ on this and the difference is not cosmetic: the API
+        attaches the PDF to the message, while Claude Code can only `Read` it
+        off disk. A prompt that says "attached" to a provider that attached
+        nothing produces a model that correctly refuses — a real failure that
+        looks like a safety feature.
+        """
+        return "the attached datasheet pages"
 
     def __init__(
         self, sandbox: Sandbox, *, tools: frozenset[str] = EXTRACTION_TOOLS
@@ -92,7 +113,7 @@ class LLMProvider(abc.ABC):
 
     def extract(self, request: ExtractionRequest) -> ExtractionResult:
         """Turn a datasheet slice into IR YAML, recording everything."""
-        self.sandbox.write_bytes(f"{request.mpn}.slice.pdf", request.pdf)
+        self.sandbox.write_bytes(slice_name(request.mpn), request.pdf)
         self.sandbox.transcript.record(
             "provider_call",
             provider=self.name,

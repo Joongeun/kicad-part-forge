@@ -27,6 +27,8 @@ from kifab.llm import (
     extract_yaml,
     make_provider,
 )
+from kifab.generate.prompt import build_instructions
+from kifab.llm.base import slice_name
 from kifab.llm.claudecode import ALLOWED_TOOLS, DENIED_TOOLS, build_argv, parse_response
 
 PDF = b"%PDF-1.4 pretend"
@@ -231,6 +233,45 @@ def test_claude_code_argv_denies_every_escape_route() -> None:
 def test_claude_code_response_parsing() -> None:
     assert parse_response('{"result": "mpn: X"}') == "mpn: X"
     assert parse_response("plain text") == "plain text"
+
+
+# -- the prompt has to name the pages the provider actually delivered -------
+#
+# Regression: the template said "the attached datasheet pages" for every
+# provider, but `claude -p` attaches nothing — the slice is only on disk. With
+# `Glob` and `Bash` denied, the model could not find the file, and refused. The
+# refusal was correct behaviour on a prompt that was lying to it.
+
+
+def test_claude_code_prompt_names_the_slice_it_can_read(tmp_path: Path) -> None:
+    provider = ClaudeCodeProvider(_sandbox(tmp_path))
+    clause = provider.source_clause("LTC5552")
+    assert slice_name("LTC5552") in clause
+    assert "attached" not in clause
+
+    prompt = build_instructions(
+        mpn="LTC5552", pages=[1, 13], total_pages=18, source=clause
+    )
+    assert "LTC5552.slice.pdf" in prompt
+    assert "attached datasheet pages" not in prompt
+
+
+def test_api_key_prompt_still_says_attached(tmp_path: Path) -> None:
+    # This provider really does attach the PDF, so pointing it at a file would
+    # be the same bug in the other direction.
+    provider = ApiKeyProvider(_sandbox(tmp_path), api_key="x")
+    assert provider.source_clause("LTC5552") == "the attached datasheet pages"
+
+
+def test_the_prompt_names_the_file_extract_actually_writes(tmp_path: Path) -> None:
+    """The two halves of the bug, asserted against each other."""
+    sandbox = _sandbox(tmp_path)
+    provider = NullProvider(sandbox)
+    request = ExtractionRequest(mpn="LTC5552", pdf=PDF, pages=[1], instructions="x")
+    with pytest.raises(LLMUnavailable):
+        provider.extract(request)
+    written = {p.name for p in sandbox.root.iterdir()}
+    assert slice_name("LTC5552") in written
 
 
 def test_claude_code_reports_a_missing_cli_as_unavailable(tmp_path: Path) -> None:

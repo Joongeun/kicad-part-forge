@@ -15,11 +15,13 @@ from __future__ import annotations
 TEMPLATE = """\
 # Task
 
-Produce a **kifab Part IR** YAML document for the part `{mpn}` from the
-attached datasheet pages. Answer with the YAML document and nothing else.
+Produce a **kifab Part IR** YAML document for the part `{mpn}` from
+{source}. Answer with the YAML document and nothing else.
 
 You were given pages {pages} of a {total}-page datasheet: the pin table and the
-mechanical drawing, selected automatically from the text layer. If something
+mechanical drawing, selected automatically from the text layer. Those are the
+page numbers in the *original* document; the slice you have holds only them, in
+that order. If something
 you need is not on these pages, write a `# NOTE:` comment saying so — **never
 supply a dimension from memory**. A remembered number that looks right is the
 one failure this pipeline exists to prevent.
@@ -91,9 +93,21 @@ drawing marks it BSC/basic (i.e. exact).
 """
 
 
-def build_instructions(*, mpn: str, pages: list[int], total_pages: int) -> str:
+def build_instructions(
+    *,
+    mpn: str,
+    pages: list[int],
+    total_pages: int,
+    source: str = "the attached datasheet pages",
+) -> str:
+    """`source` is the provider's own description of where the pages are.
+
+    It is a parameter rather than a constant because a provider that cannot
+    attach a document has to point at the file it wrote instead.
+    """
     return TEMPLATE.format(
         mpn=mpn,
         pages=", ".join(str(p) for p in pages) or "(all)",
         total=total_pages,
+        source=source,
     )

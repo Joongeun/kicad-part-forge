@@ -23,7 +23,13 @@ import os
 import shutil
 import subprocess
 
-from .base import ExtractionRequest, LLMProvider, LLMUnavailable, ProviderError
+from .base import (
+    ExtractionRequest,
+    LLMProvider,
+    LLMUnavailable,
+    ProviderError,
+    slice_name,
+)
 
 CLI = "claude"
 
@@ -81,6 +87,18 @@ class ClaudeCodeProvider(LLMProvider):
         self.model = model or os.environ.get("KIFAB_MODEL")
         self.cli = cli
         self.timeout = timeout
+
+    def source_clause(self, mpn: str) -> str:
+        """Name the file, because nothing is attached to a `claude -p` run.
+
+        `--allowed-tools Read` is the model's only way to reach the pages, and
+        it cannot list the directory to find them — `Glob` and `Bash` are
+        denied on purpose. So the filename has to be in the prompt.
+        """
+        return (
+            f"the datasheet pages in `{slice_name(mpn)}`, which is in your "
+            "working directory — open it with the Read tool before answering"
+        )
 
     def _run(self, request: ExtractionRequest) -> str:
         if shutil.which(self.cli) is None:

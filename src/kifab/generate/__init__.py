@@ -178,6 +178,7 @@ def generate(
                 mpn=request.mpn,
                 pages=selection.pages,
                 total_pages=selection.total_pages,
+                source=provider.source_clause(request.mpn),
             ),
         )
     )
