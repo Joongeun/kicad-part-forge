@@ -5,3 +5,9 @@ build/
 .pytest_cache/
 models/
 runs/
+
+# Contains a live Part-DB API token. `kifab httplib` writes it 0600; this is
+# the second lock. partdb-sync.json is NOT ignored on purpose — it holds no
+# secret and is the shared record of what sync last wrote.
+*.kicad_httplib
+docker/data/

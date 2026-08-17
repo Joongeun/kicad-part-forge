@@ -178,8 +178,10 @@ carries its semantics in its `description`.
 | `src/kifab/review.py` | the review gate — the only writer into `parts/` |
 | `src/kifab/audit.py` | `kifab audit`: prove a run never saw an existing part |
 | `src/kifab/validate/` | schema lint, geometry sanity, KLC, the `kicad-cli` gate |
+| `src/kifab/partdb/` | `kifab sync` (REST, we write) and `.kicad_httplib` (KiCad reads) |
 | `src/kifab/uuids.py` | derived (never random) UUIDs |
 | `skills/` | Claude Code skills: `forge` (route an MPN), `datasheet` (read a drawing) |
+| `docker/` | a local Part-DB, and the first-run steps |
 | `parts/` | the part corpus |
 | `runs/` | generation runs: transcript, page rationale, proposal, preview |
 | `tests/golden/` | reviewed reference output, byte-compared |
@@ -222,3 +224,40 @@ the result, and print the grading checklist. The audit asserts the run read no
 `.kicad_mod`/`.kicad_sym`, fetched from no library aggregator, and never
 succeeded outside its own scratch directory — any violation fails the run
 regardless of how good the output looks.
+
+## Register the library in Part-DB
+
+Part-DB is the *end* of this pipeline, not the start. Its KiCad integration is
+a **read-only HTTP library** that stores pointers — a symbol id, a footprint
+name, a reference prefix, a value. It holds no geometry and generates none, so
+`kifab build` still has to have written the files it names.
+
+```
+kifab build parts/ -o build         # the geometry has to exist first
+kifab sync --dry-run                # read the plan
+kifab sync                          # /api/parts — kifab writes
+kifab httplib -o ~/Documents/KiCad/9.0/partdb.kicad_httplib   # KiCad reads
+```
+
+`kifab sync` is **idempotent**: a second run of an unchanged library performs no
+writes at all, and the tests assert that by counting requests, not by looking at
+the result. Parts are identified by **MPN**, so a row somebody already created
+by hand is adopted and updated rather than duplicated — that is the normal case,
+since the chip is usually bought before it is drawn.
+
+It writes exactly four fields (KiCad symbol, KiCad footprint, reference prefix,
+value). Stock, storage, prices, suppliers and the user's own description are
+never touched. If somebody changed one of those four in Part-DB, sync reports a
+**conflict** and changes nothing; `--force` makes `parts/` win, after you have
+read the dry run.
+
+`partdb-sync.json` records what kifab last wrote — commit it. It is how sync
+tells its own previous change apart from somebody else's, and how a second
+machine reconciles instead of duplicating. `.kicad_httplib` is the opposite:
+it holds a live token, is written 0600, and is gitignored.
+
+`docker/` brings a Part-DB up locally and `docker/README.md` covers the parts
+that are not guessable: enabling API access per user (it is off by default),
+creating an Edit-scoped token, and the `root_url` that must stop before `v1`.
+**That path has not been run end to end** — see the note at the top of
+`docker/README.md`.

@@ -1,0 +1,35 @@
+{
+  "@context": "/api/contexts/Part",
+  "@id": "/api/parts",
+  "@type": "hydra:Collection",
+  "hydra:totalItems": 2,
+  "hydra:member": [
+    {
+      "@id": "/api/parts/42",
+      "@type": "Part",
+      "id": 42,
+      "name": "24LC256",
+      "description": "I2C Serial EEPROM, 256 Kbit (32k x 8), 1.7-5.5 V, SOIC-8",
+      "manufacturer_product_number": "24LC256",
+      "ipn": null,
+      "tags": ""
+    },
+    {
+      "@id": "/api/parts/43",
+      "@type": "Part",
+      "id": 43,
+      "name": "24lc256-e/sn",
+      "description": "same chip, entered again by somebody else",
+      "manufacturer_product_number": "24LC256-E/SN",
+      "ipn": null,
+      "tags": ""
+    }
+  ],
+  "hydra:view": {
+    "@id": "/api/parts?page=1",
+    "@type": "hydra:PartialCollectionView",
+    "hydra:first": "/api/parts?page=1",
+    "hydra:last": "/api/parts?page=2",
+    "hydra:next": "/api/parts?page=2"
+  }
+}

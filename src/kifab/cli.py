@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -17,6 +18,16 @@ from .build import build, discover
 from .generate import GenerationError, GenerationRequest, generate
 from .index import Index, LibraryRoot, default_db_path, default_roots
 from .ir import load_part
+from .partdb import (
+    PartDbClient,
+    PartDbError,
+    SyncState,
+    apply_plan,
+    httplib_document,
+    plan_sync,
+    write_httplib,
+)
+from .partdb.sync import DEFAULT_CATEGORY, DEFAULT_STATE_PATH
 from .llm import DEFAULT_PROVIDER, LLMUnavailable, ProviderError, make_provider
 from .pdf.text import PdfError
 from .review import ReviewError, accept
@@ -447,6 +458,144 @@ def _audit_command(args: argparse.Namespace) -> int:
     return 0 if report.ok() else 1
 
 
+# -- Part-DB: registration, and the file KiCad reads back --------------
+#
+# Direction of travel: `kifab sync` writes to Part-DB's REST API; KiCad reads
+# from Part-DB's separate, read-only KiCad HTTP library API. Part-DB never
+# supplies geometry, so nothing here can affect what a part *is* — only where
+# the inventory says its symbol and footprint live.
+
+ENV_URL = "PARTDB_URL"
+ENV_TOKEN = "PARTDB_TOKEN"
+ENV_TOKEN_FILE = "PARTDB_TOKEN_FILE"
+
+
+def _partdb_url(args: argparse.Namespace) -> str:
+    url = args.url or os.environ.get(ENV_URL, "")
+    if not url:
+        raise PartDbError(
+            f"no Part-DB URL. Pass --url https://host, or set ${ENV_URL}."
+        )
+    return url
+
+
+def _partdb_token(args: argparse.Namespace) -> str:
+    """Token from the flag, a file, or the environment — in that order.
+
+    A token is a credential, so `--token-file` and the environment exist to
+    keep it out of shell history and out of `ps`.
+    """
+    if getattr(args, "token", None):
+        return str(args.token)
+    path = getattr(args, "token_file", None) or os.environ.get(ENV_TOKEN_FILE, "")
+    if path:
+        try:
+            return Path(path).read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            raise PartDbError(f"could not read the token file {path}: {exc}") from exc
+    token = os.environ.get(ENV_TOKEN, "")
+    if not token:
+        raise PartDbError(
+            f"no Part-DB API token. Pass --token, --token-file, or set ${ENV_TOKEN}.\n"
+            "  Create one in Part-DB: User Settings > API tokens > Create. The "
+            "token needs the 'Edit' scope, and the user it belongs to needs the "
+            "'Access the API' permission (Permissions > API)."
+        )
+    return token
+
+
+def _sync_command(args: argparse.Namespace) -> int:
+    """Reconcile `parts/` with the Part-DB inventory.
+
+    Reads `parts/`, never `runs/`: a proposal that has not been through the
+    review gate is not a part, and registering one would put an unreviewed
+    symbol id in front of every user of the inventory.
+    """
+    sources = [Path(p) for p in args.parts] or [DEFAULT_PARTS]
+    try:
+        files = discover(sources)
+    except FileNotFoundError as exc:
+        print(f"kifab: {exc}", file=sys.stderr)
+        return 2
+    if not files:
+        print(f"kifab: no part files found in {[str(s) for s in sources]}", file=sys.stderr)
+        return 2
+
+    parts = []
+    for path in files:
+        try:
+            parts.append(load_part(path))
+        except ValueError as exc:
+            print(f"kifab: {exc}", file=sys.stderr)
+            return 1
+
+    try:
+        client = PartDbClient(_partdb_url(args), _partdb_token(args))
+        state = SyncState.load(args.state)
+        plan = plan_sync(client, parts, state, force=args.force)
+        if not args.dry_run:
+            apply_plan(client, plan, state, category=args.category)
+    except PartDbError as exc:
+        print(f"kifab: {exc}", file=sys.stderr)
+        return 1
+
+    if args.json:
+        json.dump(plan.to_dict(), sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0 if plan.ok() else 1
+
+    text = plan.format()
+    if text:
+        print(text)
+    verdict = "OK" if plan.ok() else "BLOCKED"
+    print(
+        f"kifab sync: {verdict} — {plan.summary()}"
+        + (" (dry run: nothing was written)" if args.dry_run else ""),
+        file=sys.stderr,
+    )
+    if not args.dry_run and plan.writes:
+        print(
+            f"    recorded what was written in {state.path} — commit it, so "
+            "another machine reconciles instead of duplicating.",
+            file=sys.stderr,
+        )
+    return 0 if plan.ok() else 1
+
+
+def _httplib_command(args: argparse.Namespace) -> int:
+    """Write the `.kicad_httplib` KiCad needs to read Part-DB."""
+    try:
+        document = httplib_document(
+            _partdb_url(args),
+            _partdb_token(args),
+            name=args.name,
+            description=args.description,
+            locale=args.locale,
+        )
+    except (PartDbError, ValueError) as exc:
+        print(f"kifab: {exc}", file=sys.stderr)
+        return 2
+
+    if args.stdout:
+        json.dump(document, sys.stdout, indent=4)
+        sys.stdout.write("\n")
+        return 0
+
+    path = write_httplib(args.out, document)
+    print(path)
+    print(
+        f"kifab: wrote {path} (mode 0600 — it contains a live API token; do "
+        "not commit it).\n"
+        "  In KiCad: Preferences > Manage Symbol Libraries > Add (folder icon) "
+        f"> pick {path.name}.\n"
+        f"  It serves {document['source']['root_url']}"
+        f"{document['source']['api_version']}/ — parts appear there only once "
+        "`kifab sync` has given them a KiCad symbol.",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def _check_command(args: argparse.Namespace) -> int:
     targets = [Path(p) for p in args.targets] or [DEFAULT_PARTS]
     conformance = None
@@ -732,6 +881,85 @@ def main(argv: list[str] | None = None) -> int:
     audit_parser.add_argument("run", help="the runs/<MPN>/ directory to audit")
     audit_parser.add_argument("--json", action="store_true")
     audit_parser.set_defaults(func=_audit_command)
+
+    # -- Part-DB: registration downstream of the library -----------------
+    sync_parser = sub.add_parser(
+        "sync",
+        help="register parts/ in Part-DB so KiCad's HTTP library can see them",
+        description="Reconciles parts/ against a Part-DB inventory over its "
+        "REST API. Idempotent: a second run of an unchanged library issues no "
+        "writes at all. Parts are identified by MPN, so a row somebody already "
+        "created by hand is updated rather than duplicated. kifab writes only "
+        "the four EDA fields (KiCad symbol, KiCad footprint, reference prefix, "
+        "value); stock, storage, price and supplier data are never touched. If "
+        "somebody changed one of those four in Part-DB, that is reported as a "
+        "conflict and left alone.",
+    )
+    sync_parser.add_argument(
+        "parts",
+        nargs="*",
+        help=f"part YAML files or directories (default: {DEFAULT_PARTS}/). "
+        "Never runs/ — an unreviewed proposal is not a part.",
+    )
+    sync_parser.add_argument("--url", help=f"Part-DB base URL (default: ${ENV_URL})")
+    sync_parser.add_argument("--token", help=f"API token (default: ${ENV_TOKEN})")
+    sync_parser.add_argument(
+        "--token-file", help=f"read the API token from a file (default: ${ENV_TOKEN_FILE})"
+    )
+    sync_parser.add_argument(
+        "--state",
+        default=str(DEFAULT_STATE_PATH),
+        help="record of what kifab last wrote, used to tell our own changes "
+        f"from somebody else's (default: {DEFAULT_STATE_PATH}). Commit it.",
+    )
+    sync_parser.add_argument(
+        "--category",
+        default=DEFAULT_CATEGORY,
+        help="Part-DB category for parts kifab creates; made if absent "
+        f"(default: {DEFAULT_CATEGORY!r})",
+    )
+    sync_parser.add_argument(
+        "-n",
+        "--dry-run",
+        action="store_true",
+        help="print the plan and perform no writes",
+    )
+    sync_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="resolve conflicts in favour of parts/, overwriting what somebody "
+        "set in Part-DB. Read the dry run first.",
+    )
+    sync_parser.add_argument("--json", action="store_true")
+    sync_parser.set_defaults(func=_sync_command)
+
+    httplib_parser = sub.add_parser(
+        "httplib",
+        help="write the .kicad_httplib that points KiCad at Part-DB",
+        description="Generates KiCad's HTTP library descriptor. This is the "
+        "read side: KiCad fetches symbol ids and field values from Part-DB "
+        "through it. It contains a live API token, so the file is written "
+        "0600 and must not be committed.",
+    )
+    httplib_parser.add_argument("--url", help=f"Part-DB base URL (default: ${ENV_URL})")
+    httplib_parser.add_argument("--token", help=f"API token (default: ${ENV_TOKEN})")
+    httplib_parser.add_argument("--token-file", help=f"(default: ${ENV_TOKEN_FILE})")
+    httplib_parser.add_argument(
+        "-o", "--out", default="partdb.kicad_httplib", help="where to write it"
+    )
+    httplib_parser.add_argument("--name", default="Part-DB")
+    httplib_parser.add_argument(
+        "--description", default="Parts registered by kifab, served from Part-DB"
+    )
+    httplib_parser.add_argument(
+        "--locale",
+        default="en",
+        help="Part-DB serves the KiCad API under a locale prefix (default: en)",
+    )
+    httplib_parser.add_argument(
+        "--stdout", action="store_true", help="print the JSON instead of writing it"
+    )
+    httplib_parser.set_defaults(func=_httplib_command)
 
     args = parser.parse_args(argv)
     return args.func(args)

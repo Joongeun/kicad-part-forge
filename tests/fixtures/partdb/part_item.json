@@ -1,0 +1,29 @@
+{
+  "@context": "/api/contexts/Part",
+  "@id": "/api/parts/42",
+  "@type": "Part",
+  "id": 42,
+  "name": "24LC256",
+  "description": "I2C Serial EEPROM, 256 Kbit (32k x 8), 1.7-5.5 V, SOIC-8",
+  "comment": "",
+  "category": "/api/categories/3",
+  "footprint": null,
+  "manufacturer": "/api/manufacturers/7",
+  "manufacturer_product_number": "24LC256",
+  "manufacturer_product_url": "http://ww1.microchip.com/downloads/en/devicedoc/21203m.pdf",
+  "manufacturing_status": null,
+  "needs_review": false,
+  "tags": "",
+  "mass": null,
+  "ipn": null,
+  "eda_info": {
+    "reference_prefix": "U",
+    "value": "24LC256",
+    "visibility": null,
+    "exclude_from_bom": null,
+    "exclude_from_board": null,
+    "exclude_from_sim": null,
+    "kicad_symbol": "kifab:24LC256",
+    "kicad_footprint": "kifab:SOIC-8_3.9x4.9mm_P1.27mm"
+  }
+}

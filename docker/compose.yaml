@@ -1,0 +1,52 @@
+# A local Part-DB, for developing against and for a single-designer setup.
+#
+# Part-DB is the *inventory* end of this pipeline. It stores pointers — a KiCad
+# symbol id, a footprint name, a reference prefix, a value — and serves them to
+# KiCad over a read-only HTTP library. It never holds geometry. `kifab build`
+# still has to have written the .kicad_sym and .pretty/ to disk.
+#
+#     docker compose -f docker/compose.yaml up -d
+#     docker compose -f docker/compose.yaml exec --user=www-data partdb \
+#         php bin/console doctrine:migrations:migrate
+#
+# The second command prints the generated `admin` password, once. See README.md.
+#
+# NOT FOR THE PUBLIC INTERNET as written: it is plain HTTP and APP_SECRET is a
+# placeholder. Put it behind a reverse proxy with TLS before exposing it.
+
+services:
+  partdb:
+    # The published image is `jbtronics/part-db1` — the maintainer's Docker Hub
+    # repo, and the only one the project's release workflow pushes to. There is
+    # no ghcr.io/part-db/part-db.
+    image: jbtronics/part-db1:latest
+    container_name: kifab-partdb
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      # Three separate mounts, because they fail differently: lose `db` and you
+      # lose the inventory; lose the other two and attachments 404.
+      - ./data/db:/var/www/html/var/db
+      - ./data/uploads:/var/www/html/uploads
+      - ./data/public_media:/var/www/html/public/media
+    environment:
+      # SQLite is right for one designer: no second container, and the whole
+      # database is one file you can copy. Point DATABASE_URL at postgres if
+      # this ever becomes a team instance.
+      - DATABASE_URL=sqlite:///%kernel.project_dir%/var/db/app.db
+      - DATABASE_SQLITE_ENFORCE_FOREIGN_KEYS=1
+      - APP_ENV=docker
+      # CHANGE THIS before first run: `openssl rand -hex 32`. It signs session
+      # cookies and password-reset tokens.
+      - APP_SECRET=CHANGE_ME_openssl_rand_hex_32
+      - DEFAULT_LANG=en
+      - DEFAULT_TIMEZONE=UTC
+      # Fixed at first run and not changeable afterwards.
+      - BASE_CURRENCY=EUR
+      - INSTANCE_NAME=kifab parts
+      - ALLOW_ATTACHMENT_DOWNLOADS=0
+      - USE_GRAVATAR=0
+      # Applies schema migrations on container start. Convenient here; on a
+      # real instance run migrations deliberately so you see their output.
+      - DB_AUTOMIGRATE=true

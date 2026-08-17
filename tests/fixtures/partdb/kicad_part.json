@@ -1,0 +1,23 @@
+{
+  "id": "42",
+  "name": "24LC256",
+  "symbolIdStr": "kifab:24LC256",
+  "exclude_from_bom": "False",
+  "exclude_from_board": "False",
+  "exclude_from_sim": "False",
+  "description": "I2C Serial EEPROM, 256 Kbit (32k x 8), 1.7-5.5 V, SOIC-8",
+  "fields": {
+    "footprint": { "value": "kifab:SOIC-8_3.9x4.9mm_P1.27mm", "visible": "False" },
+    "reference": { "value": "U", "visible": "True" },
+    "value": { "value": "24LC256", "visible": "True" },
+    "keywords": { "value": "", "visible": "False" },
+    "datasheet": { "value": "", "visible": "False" },
+    "Part-DB URL": { "value": "http://localhost:8080/en/part/42/info", "visible": "False" },
+    "description": { "value": "I2C Serial EEPROM", "visible": "False" },
+    "Category": { "value": "kifab", "visible": "False" },
+    "Manufacturer": { "value": "Microchip", "visible": "False" },
+    "MPN": { "value": "24LC256", "visible": "False" },
+    "Manufacturing Status": { "value": "", "visible": "False" },
+    "Part-DB Footprint": { "value": "", "visible": "False" }
+  }
+}
