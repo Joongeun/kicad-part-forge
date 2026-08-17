@@ -18,33 +18,18 @@ uv run kifab build parts/ -o build || fail=1
 step "Test suite (IR, emitters, golden files, S-expression round-trip, IPC geometry)"
 uv run pytest -q || fail=1
 
-step "KiCad format conformance"
-if [[ -x "$KICAD_CLI" ]]; then
-  # `upgrade` rewrites in place, so run it on a copy: the gate must not mutate
-  # the artefacts it is judging.
-  scratch="$(mktemp -d)"
-  trap 'rm -rf "$scratch"' EXIT
-  cp -R build/. "$scratch/" 2>/dev/null || true
-
-  shopt -s nullglob
-  pretty_dirs=("$scratch"/*.pretty)
-  if (( ${#pretty_dirs[@]} == 0 )); then
-    warn "no generated libraries in build/ yet"
-  else
-    for dir in "${pretty_dirs[@]}"; do
-      echo "    $(basename "$dir")"
-      "$KICAD_CLI" fp upgrade --force "$dir" || fail=1
-    done
-  fi
-
-  sym_libs=("$scratch"/*.kicad_sym)
-  for lib in ${sym_libs[@]+"${sym_libs[@]}"}; do
-    echo "    $(basename "$lib")"
-    "$KICAD_CLI" sym upgrade --force "$lib" || fail=1
-  done
-else
-  warn "kicad-cli not found at $KICAD_CLI (set KICAD_CLI to override)"
+step "Validators: schema lint, geometry sanity, KLC, KiCad format conformance"
+# `kifab check` owns the kicad-cli round-trip gate now (src/kifab/validate/
+# roundtrip.py), so the same code path runs here, in the tests and per part
+# from the CLI. It works on a copy internally: `upgrade` rewrites in place and
+# the gate must never mutate the artefacts it is judging.
+if [[ ! -x "$KICAD_CLI" ]]; then
+  warn "kicad-cli not found at $KICAD_CLI (set KICAD_CLI to override); the"
+  warn "format conformance gate will report itself as skipped, not as passed"
 fi
+# --strict: for our own corpus a warning is a defect too. Third-party files
+# checked ad hoc are the case --strict is *not* for.
+KICAD_CLI="$KICAD_CLI" uv run kifab check parts/ build/ --strict || fail=1
 
 if (( fail )); then
   printf '\n\033[31mFAILED\033[0m\n'

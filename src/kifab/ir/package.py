@@ -27,11 +27,13 @@ from pydantic import (
     PlainSerializer,
     PlainValidator,
     WithJsonSchema,
+    field_validator,
     model_validator,
 )
 
 from ..ipc import gullwing
 from ..ipc.toleranced import Tol
+from .designator import coerce_designator, require_non_empty
 from .enums import Density, MountType, PadShape, PadType
 
 
@@ -78,7 +80,11 @@ class Pad(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    number: str
+    number: str = Field(
+        description="Pad number. A string, because KiCad pad numbers are not "
+        "all integers (BGA 'A1', exposed pad 'EP') — but a bare YAML integer "
+        "is accepted and coerced, exactly as `Pin.number` is."
+    )
     at: tuple[float, float] = Field(description="Centre (x, y) in mm.")
     size: tuple[float, float] = Field(description="(width, height) in mm.")
     shape: PadShape = PadShape.ROUNDRECT
@@ -99,6 +105,17 @@ class Pad(BaseModel):
         description="Corner radius as a fraction of the shorter side. Unset "
         "means the house rule: 25%, capped at a 0.25 mm radius.",
     )
+
+    @field_validator("number", mode="before")
+    @classmethod
+    def _coerce_number(cls, value: object) -> object:
+        """Allow bare integers in YAML — `number: 3` rather than `number: "3"`."""
+        return coerce_designator(value)
+
+    @field_validator("number")
+    @classmethod
+    def _non_empty(cls, value: str) -> str:
+        return require_non_empty(value, "pad number")
 
     @model_validator(mode="after")
     def _check_drill(self) -> Pad:

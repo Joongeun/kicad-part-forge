@@ -1,7 +1,8 @@
-"""`kifab build` — the end-to-end path a user actually runs."""
+"""`kifab build` / `kifab check` — the end-to-end path a user actually runs."""
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -214,3 +215,67 @@ def test_adopt_reports_an_unknown_library_item(tmp_path: Path, corpus: Path) -> 
         main(_t0(tmp_path, corpus, "adopt", "--footprint", "Nope:Nothing"))
         == 2
     )
+
+
+# --------------------------------------------------------------------------
+# `kifab check` — the validators, from the command line
+# --------------------------------------------------------------------------
+
+
+def test_check_passes_on_the_shipped_corpus(capsys) -> None:
+    assert main(["check", str(PARTS_DIR), "--no-kicad-cli", "--strict"]) == 0
+    assert "OK" in capsys.readouterr().err
+
+
+def test_check_fails_on_a_part_with_a_real_defect(tmp_path: Path, capsys) -> None:
+    """Two pads on top of each other: a short, and it must block."""
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "mpn: BAD1\n"
+        "symbol:\n"
+        "  pins:\n"
+        "    - { number: 1, name: A, side: left }\n"
+        "    - { number: 2, name: B, side: right }\n"
+        "footprint:\n"
+        "  name: BAD_FP\n"
+        "  package:\n"
+        "    family: custom\n"
+        "    body: { x: 2.0, y: 1.0 }\n"
+        "    pads:\n"
+        "      - { number: 1, at: [-0.2, 0], size: [0.8, 0.8] }\n"
+        "      - { number: 2, at: [0.2, 0], size: [0.8, 0.8] }\n",
+        encoding="utf-8",
+    )
+    assert main(["check", str(bad), "--no-kicad-cli"]) == 1
+    out = capsys.readouterr()
+    assert "GEO001" in out.out
+    assert "bad.yaml" in out.out
+    assert "FAILED" in out.err
+
+
+def test_check_warnings_do_not_block_unless_strict(tmp_path: Path) -> None:
+    """A part with no datasheet is questionable, not wrong."""
+    thin = tmp_path / "thin.yaml"
+    thin.write_text(
+        (PARTS_DIR / "24LC256.yaml")
+        .read_text(encoding="utf-8")
+        .replace("datasheet: http", "# datasheet: http")
+        .replace("mpn: 24LC256", "mpn: 24LC256X"),
+        encoding="utf-8",
+    )
+    assert main(["check", str(thin), "--no-kicad-cli"]) == 0
+    assert main(["check", str(thin), "--no-kicad-cli", "--strict"]) == 1
+
+
+def test_check_json_is_machine_readable(capsys) -> None:
+    assert main(["check", str(PARTS_DIR), "--no-kicad-cli", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is True
+    assert payload["counts"] == {"error": 0, "warning": 0, "info": 0}
+
+
+def test_check_reports_an_unusable_target(tmp_path: Path, capsys) -> None:
+    empty = tmp_path / "nothing"
+    empty.mkdir()
+    assert main(["check", str(empty), "--no-kicad-cli"]) == 1
+    assert "nothing to check" in capsys.readouterr().out

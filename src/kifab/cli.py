@@ -17,6 +17,7 @@ from .index import Index, LibraryRoot, default_db_path, default_roots
 from .ir import load_part
 from .resolve import MatchSet, search
 from .resolve.adopt import AdoptionError, adopt, to_yaml
+from .validate import Conformance, check_paths
 
 DEFAULT_PARTS = Path("parts")
 DEFAULT_OUT = Path("build")
@@ -226,6 +227,37 @@ def _adopt_command(args: argparse.Namespace) -> int:
     return 0
 
 
+def _check_command(args: argparse.Namespace) -> int:
+    targets = [Path(p) for p in args.targets] or [DEFAULT_PARTS]
+    conformance = None
+    if not args.no_kicad_cli:
+        conformance = Conformance.discover(args.kicad_cli)
+        if not conformance.available:
+            print(
+                "kifab: kicad-cli not found; the format conformance gate will "
+                "be reported as skipped (set KICAD_CLI to override)",
+                file=sys.stderr,
+            )
+
+    report = check_paths(targets, conformance=conformance)
+
+    if args.json:
+        json.dump(report.to_dict(strict=args.strict), sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0 if report.ok(strict=args.strict) else 1
+
+    text = report.format(verbose=args.verbose)
+    if text:
+        print(text)
+    verdict = "OK" if report.ok(strict=args.strict) else "FAILED"
+    print(
+        f"kifab check: {verdict} — {report.summary()}"
+        + (" (strict: warnings block)" if args.strict else ""),
+        file=sys.stderr,
+    )
+    return 0 if report.ok(strict=args.strict) else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="kifab",
@@ -248,6 +280,43 @@ def main(argv: list[str] | None = None) -> int:
         help=f"output directory (default: {DEFAULT_OUT}/)",
     )
     build_parser.set_defaults(func=_build_command)
+
+    check_parser = sub.add_parser(
+        "check",
+        help="validate parts, libraries or footprints",
+        description="Runs every validator: IR schema lint, geometry sanity, "
+        "KLC conventions and the kicad-cli format gate. Accepts part YAML, a "
+        ".kicad_sym, a .kicad_mod, a .pretty directory or a tree containing "
+        "any of them. Errors block (exit 1); warnings do not, unless --strict.",
+    )
+    check_parser.add_argument(
+        "targets",
+        nargs="*",
+        help=f"what to check (default: {DEFAULT_PARTS}/)",
+    )
+    check_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="treat warnings as blocking too",
+    )
+    check_parser.add_argument(
+        "--json", action="store_true", help="machine-readable output for CI"
+    )
+    check_parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="also print informational findings, including skipped checks",
+    )
+    check_parser.add_argument(
+        "--kicad-cli", help="path to kicad-cli (default: $KICAD_CLI, then PATH)"
+    )
+    check_parser.add_argument(
+        "--no-kicad-cli",
+        action="store_true",
+        help="skip the format conformance gate entirely",
+    )
+    check_parser.set_defaults(func=_check_command)
 
     # -- T0: the local corpus ------------------------------------------
     index_parser = sub.add_parser(

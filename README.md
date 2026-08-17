@@ -58,19 +58,44 @@ stated blocks confidence just as hard as one that disagrees. `.confident` and
 `.review` are separate lists in the API too; there is no combined accessor to
 take `[0]` from by accident.
 
+## Check it
+
+```sh
+uv run kifab check parts/                  # a part, a directory, a whole tree
+uv run kifab check build/kifab.pretty      # or files with no IR behind them
+uv run kifab check parts/ --strict --json  # for CI: warnings block, output parses
+```
+
+Four families of check, and each says which representation it read:
+
+| | reads | catches |
+|---|---|---|
+| **schema** | the IR | well-typed statements that contradict each other — a lead span narrower than the body, `GND` typed `output`, a footprint name stating a pitch its geometry does not have |
+| **geometry** | emitted files | pad-to-pad and exposed-pad shorts, pads outside the courtyard, silk on copper, off-grid pins, duplicate pins/pads, symbol↔footprint pin-set disagreement |
+| **KLC** | emitted files | the conventions where a deviation is a defect: layer line widths, `(attr …)` matching the pads, pin-1 indicator, 3D model path, the canonical property set |
+| **conformance** | emitted files | `kicad-cli … upgrade` — KiCad's own parser — accepting the file *and* rewriting it byte-identically |
+
+Output names the element, its position and the reason:
+
+```
+parts/BAD1.yaml
+  error   GEO001    pad "1" <-> pad "2": copper of two different pad numbers
+                    overlaps or touches (gap 0.000 mm) — this is a short  at (0, 0)
+```
+
+**An error blocks; a warning does not** (`--strict` promotes them). A third
+level, *info*, is for notes that never block — including "kicad-cli was not
+found, so that gate did not run", because a check that could not run must never
+look like one that passed.
+
 ## Verify it
 
 ```sh
 ./scripts/verify.sh
 ```
 
-That builds the corpus, runs the test suite, and then hands the generated files
-to `kicad-cli … upgrade` — KiCad's own parser — as the conformance gate. Nothing
-is "done" until it passes.
-
-The suite also asserts the stronger property that `kicad-cli` rewrites our
-output **byte-for-byte identically** apart from the `(generator …)` token, i.e.
-we emit KiCad's canonical form rather than merely something it will accept.
+That builds the corpus, runs the test suite, and then runs `kifab check … --strict`
+over both the IR and the generated files. Nothing is "done" until it passes.
 
 ## Write a part
 
@@ -116,6 +141,7 @@ carries its semantics in its `description`.
 | `src/kifab/ipc/` | IPC-7351B land arithmetic and package families |
 | `src/kifab/index/` | SQLite/FTS index over the local corpus + package identity |
 | `src/kifab/resolve/` | resolver tiers; `local.py` is T0, `adopt.py` turns a hit into IR |
+| `src/kifab/validate/` | schema lint, geometry sanity, KLC, the `kicad-cli` gate |
 | `src/kifab/uuids.py` | derived (never random) UUIDs |
 | `parts/` | the part corpus |
 | `tests/golden/` | reviewed reference output, byte-compared |

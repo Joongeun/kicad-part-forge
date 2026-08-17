@@ -42,5 +42,5 @@ footprint:
     body: { x: 3.2, y: 1.6 }
     courtyard: 0.25
     pads:
-      - { number: "1", at: [-1.575, 0], size: [1.05, 1.9] }
-      - { number: "2", at: [1.575, 0], size: [1.05, 1.9] }
+      - { number: 1, at: [-1.575, 0], size: [1.05, 1.9] }
+      - { number: 2, at: [1.575, 0], size: [1.05, 1.9] }

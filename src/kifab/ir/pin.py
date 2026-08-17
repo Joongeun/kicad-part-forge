@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .designator import coerce_designator, require_non_empty
 from .enums import ElectricalType, PinShape, Side
 
 
@@ -72,13 +73,9 @@ class Pin(BaseModel):
     @classmethod
     def _coerce_number(cls, value: object) -> object:
         """Allow bare integers in YAML — `number: 3` rather than `number: "3"`."""
-        if isinstance(value, (int, float)) and not isinstance(value, bool):
-            return str(int(value))
-        return value
+        return coerce_designator(value)
 
     @field_validator("number")
     @classmethod
     def _non_empty(cls, value: str) -> str:
-        if not value.strip():
-            raise ValueError("pin number must not be empty")
-        return value
+        return require_non_empty(value, "pin number")

@@ -427,10 +427,12 @@ def _flow(mapping: dict) -> str:
     parts = []
     for key, value in mapping.items():
         if isinstance(value, str):
-            # Pad numbers must stay strings: `Pad.number` is typed `str` (BGA
-            # "A1", exposed pad "EP"), and pydantic will not coerce an int to
-            # one, so an unquoted `number: 1` makes the file we just wrote fail
-            # to load.
+            # Numeric-looking strings stay quoted. Since Phase 3 the IR coerces
+            # a bare YAML integer for both `Pin.number` and `Pad.number`, so
+            # this is no longer load-critical — it is kept because the quotes
+            # say out loud that the field is a string, which is what makes an
+            # adopted BGA's "A1" sit in the same column as a "1" without
+            # looking like a different kind of value.
             needs_quotes = value == "" or " " in value or _looks_numeric(value)
             rendered = f'"{value}"' if needs_quotes else value
         elif isinstance(value, list):

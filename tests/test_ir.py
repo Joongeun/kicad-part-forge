@@ -174,6 +174,40 @@ def test_pin_number_accepts_yaml_integers_and_keeps_them_strings() -> None:
     assert Pin(number="EP").number == "EP"
 
 
+def test_pad_number_reads_exactly_like_a_pin_number() -> None:
+    """The same key must not behave differently in the same file.
+
+    Phase 2 found `number: 1` valid for a pin and invalid for a pad; Phase 3
+    made both coerce. The pair of assertions below is the regression.
+    """
+    assert Pad(number=7, at=(0, 0), size=(1, 1)).number == "7"
+    assert Pin(number=7).number == "7"
+    assert Pad(number="A1", at=(0, 0), size=(1, 1)).number == "A1"
+
+
+@pytest.mark.parametrize("model", [Pin, Pad])
+def test_a_fractional_number_is_refused_rather_than_truncated(model) -> None:
+    """`number: 1.5` is a typo in every real datasheet. Reading it as pad 1
+    would be silently wrong, which is the failure mode this project exists to
+    prevent."""
+    kwargs = {} if model is Pin else {"at": (0, 0), "size": (1, 1)}
+    with pytest.raises(ValidationError, match="whole number"):
+        model(number=1.5, **kwargs)
+
+
+def test_an_empty_pad_number_is_refused() -> None:
+    with pytest.raises(ValidationError, match="must not be empty"):
+        Pad(number="  ", at=(0, 0), size=(1, 1))
+
+
+def test_a_part_may_write_pin_and_pad_numbers_the_same_way() -> None:
+    data = _minimal_part()
+    for pad_spec in data["footprint"]["package"]["pads"]:
+        pad_spec["number"] = int(pad_spec["number"])
+    part = Part.model_validate(data)
+    assert {p.number for p in part.footprint.package.resolve_pads()} == {"1", "2"}
+
+
 def test_pin_defaults_are_the_conservative_ones() -> None:
     pin = Pin(number="1")
     assert pin.type is ElectricalType.PASSIVE
