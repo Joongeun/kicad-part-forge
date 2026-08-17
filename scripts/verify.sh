@@ -72,6 +72,17 @@ fi
 # checked ad hoc are the case --strict is *not* for.
 KICAD_CLI="$KICAD_CLI" uv run kifab check parts/ build/ --strict || fail=1
 
+step "The built wheel, installed into an empty venv and actually run"
+# Everything above this line runs with src/ on sys.path, which structurally
+# cannot catch a data file that is present in the checkout and missing from the
+# wheel. Set KIFAB_SKIP_WHEEL=1 to skip it in a tight edit loop; CI never does.
+if [[ "${KIFAB_SKIP_WHEEL:-}" == "1" ]]; then
+  warn "KIFAB_SKIP_WHEEL=1 — the packaged artefact was NOT tested"
+else
+  KICAD_CLI="$KICAD_CLI" ./scripts/wheel_smoke.sh >/dev/null || { ./scripts/wheel_smoke.sh; fail=1; }
+  echo "    wheel builds, installs clean, and runs from outside the repo"
+fi
+
 if (( fail )); then
   printf '\n\033[31mFAILED\033[0m\n'
   exit 1

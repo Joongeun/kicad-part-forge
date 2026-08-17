@@ -1,0 +1,54 @@
+name: publish to PyPI
+
+# Trusted publishing: GitHub mints a short-lived OIDC token, PyPI verifies it
+# came from this repo and this workflow file, and issues a one-shot upload
+# token. There is no long-lived API token in repository secrets to leak, and
+# nothing to rotate.
+#
+# One-time setup on PyPI (https://pypi.org/manage/account/publishing/), before
+# the first release — a pending publisher, since the project does not exist yet:
+#
+#   PyPI project name : kifab
+#   Owner             : <your github user or org>
+#   Repository name   : kicad-part-forge
+#   Workflow name     : publish.yml
+#   Environment name  : pypi
+#
+# Then create a GitHub environment called `pypi` (Settings -> Environments) and
+# push a tag: `git tag v0.1.0 && git push origin v0.1.0`.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  # Never publish something that was not proven to work as an installed
+  # artefact. This is the same script verify.sh runs.
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: ./scripts/wheel_smoke.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: smoke
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # The whole point: this is what lets GitHub mint the OIDC token. No
+      # secrets are referenced anywhere in this job.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

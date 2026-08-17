@@ -1,0 +1,13 @@
+{
+  "name": "part-forge",
+  "description": "Turn a manufacturer part number into a validated KiCad 9 symbol and footprint. Searches KiCad's own 22k symbols / 15k footprints first, imports from LCSC/EasyEDA second, and only generates from the datasheet as a last resort — with IPC-7351B pad maths, KLC lint and a kicad-cli format gate on everything it writes.",
+  "version": "0.1.0",
+  "author": {
+    "name": "KiCad Part Forge contributors",
+    "url": "https://github.com/clash/kicad-part-forge"
+  },
+  "homepage": "https://github.com/clash/kicad-part-forge",
+  "repository": "https://github.com/clash/kicad-part-forge",
+  "license": "GPL-3.0-or-later",
+  "keywords": ["kicad", "pcb", "eda", "footprint", "symbol", "hardware"]
+}

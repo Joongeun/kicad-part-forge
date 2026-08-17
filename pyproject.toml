@@ -4,18 +4,41 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kifab"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Generate, validate and manage KiCad 9 symbols and footprints"
 readme = "README.md"
 requires-python = ">=3.11"
+# GPL-3.0-or-later, and not by preference: src/kifab/ipc/ipc_7351b.yaml is
+# derived from the KiCad Librarian Team's `generators` repository (GPLv3+), and
+# src/kifab/ipc/toleranced.py mirrors its TolerancedSize maths so our pads match
+# the official libraries. A permissive licence would be a false claim.
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "KiCad Part Forge contributors" }]
+keywords = ["kicad", "footprint", "symbol", "ipc-7351", "pcb", "eda"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Manufacturing",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+]
 dependencies = [
     "pydantic>=2.7",
     "pypdf>=6.16.1",
     "pyyaml>=6.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/clash/kicad-part-forge"
+Repository = "https://github.com/clash/kicad-part-forge"
+Issues = "https://github.com/clash/kicad-part-forge/issues"
+
 [project.optional-dependencies]
-dev = ["pytest>=8.0", "pytest-cov>=5.0"]
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "jsonschema>=4.21"]
 # The BYOK provider only. Deliberately optional: `import kifab.llm` must not
 # pull in an HTTP client, and tests/test_llm.py asserts that it does not.
 api = ["anthropic>=0.40"]
@@ -23,8 +46,26 @@ api = ["anthropic>=0.40"]
 [project.scripts]
 kifab = "kifab.cli:main"
 
+[tool.hatch.version]
+path = "src/kifab/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/kifab"]
+
+[tool.hatch.build.targets.sdist]
+# The sdist is what `uv build` builds the wheel from, so anything the build or
+# the test suite reads has to be in it.
+include = [
+    "src/",
+    "tests/",
+    "parts/",
+    "scripts/",
+    "skills/",
+    "vendor/",
+    "README.md",
+    "LICENSE",
+    "DECISIONS.md",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

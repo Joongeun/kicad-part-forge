@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# `kifab` for the Claude Code plugin.
+#
+# The plugin ships the source tree, not a wheel, so this shim has to find some
+# way to run `kifab.cli:main` on a machine we know nothing about. It tries the
+# cheapest working option first and says exactly what to do if none of them fit.
+# It never installs anything into the user's system Python.
+#
+#   1. a real `kifab` already on PATH (pipx / uv tool / pip install --user)
+#   2. `uv run --project <plugin>` — resolves this repo's own dependencies into
+#      a venv it manages. First call takes a few seconds; after that it is warm.
+#   3. `uvx kifab` — the published wheel, if the plugin checkout is unusable
+#   4. any python3 that can already import pydantic/yaml/pypdf
+#
+set -euo pipefail
+
+root="${CLAUDE_PLUGIN_ROOT:-}"
+if [[ -z "$root" ]]; then
+  root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
+self="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/$(basename -- "${BASH_SOURCE[0]}")"
+
+# 1. An installed kifab wins: it is the user's own pinned version, and starting
+#    it costs nothing. Skip anything that resolves back to this file, or the
+#    shim would exec itself forever.
+if command -v kifab >/dev/null 2>&1; then
+  found="$(command -v kifab)"
+  if [[ "$(cd -- "$(dirname -- "$found")" && pwd)/$(basename -- "$found")" != "$self" ]]; then
+    exec "$found" "$@"
+  fi
+fi
+
+if command -v uv >/dev/null 2>&1; then
+  # 2. Run from the plugin checkout, so a user tracking `main` gets the code
+  #    they can actually read in the repo they installed.
+  if [[ -f "$root/pyproject.toml" ]]; then
+    exec uv run --quiet --project "$root" python -m kifab "$@"
+  fi
+  # 3. No checkout to run from — fall back to the published package.
+  exec uvx --quiet --from kifab kifab "$@"
+fi
+
+# 4. Last resort: a python3 that already has the three runtime dependencies.
+for py in python3 python; do
+  if command -v "$py" >/dev/null 2>&1 &&
+     PYTHONPATH="$root/src" "$py" -c 'import pydantic, yaml, pypdf' >/dev/null 2>&1; then
+    exec env PYTHONPATH="$root/src${PYTHONPATH:+:$PYTHONPATH}" "$py" -m kifab "$@"
+  fi
+done
+
+cat >&2 <<EOF
+kifab: nothing here can run the tool.
+
+Install one of these and try again:
+
+  uv        https://docs.astral.sh/uv/          (recommended — no venv to manage)
+  kifab     pipx install kifab   /   pip install --user kifab
+
+The plugin's Python source is at:
+  $root/src
+EOF
+exit 127

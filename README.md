@@ -14,6 +14,57 @@ parts/<MPN>.yaml  ──▶  Part IR  ──┬──▶  build/<lib>.kicad_sym
     diffable)                     └──▶  build/<lib>.pretty/<package>.kicad_mod
 ```
 
+## Install — three doors, and they are for different people
+
+| You are | Use | You get | Cost |
+|---|---|---|---|
+| a **Claude Code** user who wants to forge parts by asking | the **plugin** | the `forge` and `datasheet` skills, `/part-forge:forge`, and `kifab` on `PATH` | nothing beyond the subscription you already pay for |
+| **scripting, CI, or not using Claude at all** | **`uvx kifab`** | the deterministic core — search, import, build, validate, sync | free; no LLM is ever constructed |
+| a designer who just wants **the parts** | the **PCM feed** | the library inside KiCad, with an Update button | free; you never install anything |
+
+### 1. Claude Code plugin — the LLM runs on your subscription
+
+```
+/plugin marketplace add clash/kicad-part-forge
+/plugin install part-forge
+/part-forge:forge STM32F103C8T6
+```
+
+This is the answer to "I have a Claude subscription, not API credits". The
+model work happens inside your own session, so there is no API key, no credits
+and no bill from us. The plugin's `bin/` puts `kifab` on the Bash tool's `PATH`
+while it is enabled, so the skills can run the deterministic half directly.
+
+### 2. `uvx` — the deterministic core, no clone, no LLM
+
+```sh
+uvx kifab build parts/                 # everything in parts/ -> build/
+uvx kifab check parts/ build/ --strict
+pipx install kifab                     # or keep it around
+```
+
+`uvx kifab` is enough for T0 search, T1 LCSC import, T3 hand-written YAML, every
+validator, and Part-DB sync. Generation from a datasheet (T2) is the only thing
+that needs a model, and it says so rather than improvising. BYOK is an extra:
+`pipx install 'kifab[api]'`.
+
+> **First `kifab search` is slow on purpose.** Building the index over KiCad's
+> 22k symbols and 15k footprints takes about **42 s and 40 MB**, once. Every
+> refresh after that is ~0.25 s. Run `kifab index` yourself first if you would
+> rather not meet that delay mid-task.
+
+### 3. The PCM feed — subscribe to the library, never run the tool
+
+KiCad → Preferences → **Plugin and Content Manager** → *Manage…* → add:
+
+```
+https://clash.github.io/kicad-part-forge/repository.json
+```
+
+CI rebuilds the library from `parts/` on every push, validates it, and republishes
+the feed. Subscribers get an Update button. See **Publish the library** below to
+run your own.
+
 ## Use it
 
 ```sh
@@ -125,8 +176,16 @@ look like one that passed.
 ./scripts/verify.sh
 ```
 
-That builds the corpus, runs the test suite, and then runs `kifab check … --strict`
-over both the IR and the generated files. Nothing is "done" until it passes.
+That builds the corpus, runs the test suite, asserts the T2 isolation and the
+no-LLM refusal, runs `kifab check … --strict` over both the IR and the generated
+files, and finally **builds the wheel, installs it into an empty venv and runs it
+from outside the repo**. Nothing is "done" until it passes.
+
+That last step exists because every other step runs with `src/` on `sys.path`,
+which structurally cannot catch a data file that is present in the checkout and
+missing from the wheel — the failure that works here and dies on a stranger's
+first `uvx kifab`. `scripts/wheel_smoke.sh` is the same script CI runs before
+publishing. `KIFAB_SKIP_WHEEL=1` skips it in a tight edit loop; CI never does.
 
 ## Write a part
 
@@ -180,7 +239,10 @@ carries its semantics in its `description`.
 | `src/kifab/validate/` | schema lint, geometry sanity, KLC, the `kicad-cli` gate |
 | `src/kifab/partdb/` | `kifab sync` (REST, we write) and `.kicad_httplib` (KiCad reads) |
 | `src/kifab/uuids.py` | derived (never random) UUIDs |
+| `src/kifab/pcm.py` | the KiCad Plugin & Content Manager feed, + KiCad's own schema |
 | `skills/` | Claude Code skills: `forge` (route an MPN), `datasheet` (read a drawing) |
+| `commands/`, `bin/`, `.claude-plugin/` | the Claude Code plugin: command, `PATH` shim, manifests |
+| `.github/workflows/` | `verify.sh` on push, PyPI on tag, the PCM feed on `main` |
 | `docker/` | a local Part-DB, and the first-run steps |
 | `parts/` | the part corpus |
 | `runs/` | generation runs: transcript, page rationale, proposal, preview |
@@ -261,3 +323,55 @@ that are not guessable: enabling API access per user (it is off by default),
 creating an Edit-scoped token, and the `root_url` that must stop before `v1`.
 **That path has not been run end to end** — see the note at the top of
 `docker/README.md`.
+
+## Publish the library (the PCM feed)
+
+```sh
+kifab build parts/ -o build
+kifab pcm build/ -o site --base-url https://USER.github.io/REPO
+```
+
+That writes the three documents KiCad's Plugin & Content Manager reads —
+`repository.json` → `packages.json` → a package `.zip` holding `metadata.json`,
+`symbols/` and `footprints/<lib>.pretty/` — and then **checks them against
+KiCad's own `pcm.v1.schema.json`** rather than against our reading of it. A copy
+of that schema ships inside the package, so the check still runs on a machine
+with no KiCad; when KiCad *is* installed, its copy wins, so a KiCad 10 schema
+change surfaces the day you upgrade.
+
+Two properties the schema cannot express, both tested:
+
+* **The archive is byte-reproducible.** Fixed zip timestamps, sorted entries.
+  Rebuild without changing a part and the sha256 is identical — otherwise every
+  CI run would show subscribers an Update button that updates nothing.
+* **The version is the *library's*, not kifab's**, and defaults to the UTC date.
+  The corpus changes when somebody adds a part, not when the tool is released.
+  Two publishes on the same day need an explicit `--pcm-version`.
+
+`.github/workflows/pages.yml` does all of this on every push to `main` that
+touches `parts/`, and refuses to publish a corpus that fails `kifab check
+--strict`. Enable it with Settings → Pages → Source: **GitHub Actions**. No
+domain, no secrets, no bill.
+
+## Releasing to PyPI
+
+`.github/workflows/publish.yml` publishes on a `v*` tag using **trusted
+publishing**: GitHub mints a short-lived OIDC token, PyPI verifies it came from
+this repo and this workflow, and issues a one-shot upload token. There is no
+long-lived API token in repository secrets. The workflow runs
+`scripts/wheel_smoke.sh` first and will not upload a wheel that could not be
+installed and run. The one-time PyPI setup is documented at the top of the
+workflow file.
+
+## Licence
+
+**GPL-3.0-or-later**, and not by preference. `src/kifab/ipc/ipc_7351b.yaml` is
+derived from the KiCad Librarian Team's `generators` repository (GPLv3+), and
+`src/kifab/ipc/toleranced.py` mirrors its `TolerancedSize` arithmetic so our
+pads match the official libraries. A permissive licence on this repository would
+be a false claim about that lineage.
+
+The **library it produces** is a separate question: `kifab pcm` labels the
+published package `CC-BY-SA-4.0`, matching KiCad's own libraries, since symbols
+and footprints are content that ends up inside other people's boards. Change it
+with `--license`.

@@ -1,0 +1,49 @@
+name: verify
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# No network, no Docker, no LLM. The `live` marker (LCSC and Part-DB) is
+# deselected by default in pyproject.toml and stays that way here: a suite that
+# can go red because a third-party website is down is a suite people learn to
+# ignore.
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --extra dev --frozen
+
+      # kicad-cli is not installed on the runner, so `kifab check` reports the
+      # format conformance gate as SKIPPED — never as passed. That distinction
+      # is enforced in src/kifab/validate/report.py, not here.
+      - name: ./scripts/verify.sh
+        run: ./scripts/verify.sh
+
+  # The gate that in-repo tests structurally cannot cover: does the *artefact*
+  # work? A wheel that is missing its data files passes every test in the source
+  # tree and dies on the first `uvx kifab` in a stranger's terminal.
+  wheel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build and smoke-test the installed wheel
+        run: ./scripts/wheel_smoke.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

@@ -1,0 +1,76 @@
+name: publish the PCM library feed
+
+# Rebuilds the library from parts/ and serves it as a KiCad Plugin & Content
+# Manager repository on GitHub Pages. A designer pastes one URL into KiCad once
+# and gets an Update button forever — they never install kifab at all.
+#
+# One-time setup: Settings -> Pages -> Source: "GitHub Actions". Nothing else;
+# no domain, no hosting bill, no secrets.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "parts/**"
+      - "src/kifab/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never race two deploys; never cancel one half-way, or the published
+# repository.json can point at an archive that was not uploaded.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --extra dev --frozen
+
+      # Publishing an unvalidated part is how a wrong footprint reaches a
+      # stranger's board. The gate runs before the feed is built, not after.
+      - name: Validate the corpus
+        run: |
+          uv run kifab build parts/ -o build
+          uv run kifab check parts/ build/ --strict
+
+      - name: Build the PCM repository
+        env:
+          BASE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
+        run: |
+          uv run kifab pcm build/ -o site --base-url "$BASE_URL"
+          # A landing page, so the URL is not a 404 in a browser.
+          {
+            printf '<!doctype html><meta charset=utf-8>'
+            printf '<title>KiCad Part Forge library</title>'
+            printf '<h1>KiCad Part Forge library</h1>'
+            printf '<p>KiCad &rarr; Preferences &rarr; Plugin and Content Manager &rarr; Manage&hellip;'
+            printf ' &rarr; add this repository URL:</p><pre>%s/repository.json</pre>' "$BASE_URL"
+            printf '<p><a href="https://github.com/%s">Source</a></p>' "${{ github.repository }}"
+          } > site/index.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

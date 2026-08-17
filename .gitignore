@@ -2,7 +2,10 @@
 __pycache__/
 *.pyc
 build/
+dist/
+site/
 .pytest_cache/
+.ruff_cache/
 models/
 runs/
 

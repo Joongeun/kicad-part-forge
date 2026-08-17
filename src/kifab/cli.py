@@ -13,6 +13,7 @@ import os
 import sys
 from pathlib import Path
 
+from . import __version__
 from .audit import audit_run, trace
 from .build import build, discover
 from .generate import GenerationError, GenerationRequest, generate
@@ -28,6 +29,7 @@ from .partdb import (
     write_httplib,
 )
 from .partdb.sync import DEFAULT_CATEGORY, DEFAULT_STATE_PATH
+from .pcm import PcmError, RepoIdentity, find_schema, publish, validate
 from .llm import DEFAULT_PROVIDER, LLMUnavailable, ProviderError, make_provider
 from .pdf.text import PdfError
 from .review import ReviewError, accept
@@ -627,11 +629,82 @@ def _check_command(args: argparse.Namespace) -> int:
     return 0 if report.ok(strict=args.strict) else 1
 
 
+def _pcm_command(args: argparse.Namespace) -> int:
+    identity = RepoIdentity(
+        base_url=args.base_url,
+        identifier=args.identifier,
+        name=args.name,
+        description=args.description,
+        license=args.license,
+        author=args.author,
+        homepage=args.homepage,
+    )
+    try:
+        publication = publish(
+            Path(args.build),
+            Path(args.out),
+            identity,
+            version=args.pcm_version,
+        )
+    except PcmError as exc:
+        print(f"kifab: {exc}", file=sys.stderr)
+        return 2
+
+    # Schema validation is on by default and reports itself as *skipped*, never
+    # as passed, when it cannot run — same rule as the kicad-cli gate.
+    if not args.no_validate:
+        try:
+            schema = find_schema(Path(args.schema) if args.schema else None)
+            if schema is None:
+                print("kifab: no PCM schema found; validation SKIPPED", file=sys.stderr)
+            else:
+                problems = validate(publication, schema)
+                if problems:
+                    print(
+                        f"kifab: the generated repository does not match {schema}:",
+                        file=sys.stderr,
+                    )
+                    for problem in problems:
+                        print(f"  {problem}", file=sys.stderr)
+                    return 1
+                print(f"kifab: validated against {schema}", file=sys.stderr)
+        except PcmError as exc:
+            print(f"kifab: validation SKIPPED — {exc}", file=sys.stderr)
+
+    if args.json:
+        json.dump(
+            {
+                "version": publication.version,
+                "archive": str(publication.archive),
+                "sha256": publication.sha256,
+                "download_size": publication.download_size,
+                "install_size": publication.install_size,
+                "files": publication.entries,
+            },
+            sys.stdout,
+            indent=2,
+        )
+        sys.stdout.write("\n")
+        return 0
+
+    print(publication.out_dir / "repository.json")
+    print(publication.out_dir / "packages.json")
+    print(publication.archive)
+    print(
+        f"kifab: PCM repository {publication.version} — {len(publication.entries)} "
+        f"file(s), {publication.download_size} bytes\n"
+        f"       subscribe in KiCad with: {args.base_url.rstrip('/')}/repository.json",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="kifab",
         description="Generate KiCad 9 symbols and footprints from part IR YAML.",
     )
+    parser.add_argument("--version", action="version", version=f"kifab {__version__}")
     sub = parser.add_subparsers(dest="command", required=True)
 
     build_parser = sub.add_parser(
@@ -960,6 +1033,56 @@ def main(argv: list[str] | None = None) -> int:
         "--stdout", action="store_true", help="print the JSON instead of writing it"
     )
     httplib_parser.set_defaults(func=_httplib_command)
+
+    pcm_parser = sub.add_parser(
+        "pcm",
+        help="publish build/ as a KiCad Plugin & Content Manager repository",
+        description="Turns a built library into the three documents KiCad's "
+        "PCM reads (repository.json, packages.json, and a package .zip), ready "
+        "to serve from GitHub Pages. Other designers subscribe to the URL once "
+        "and get an Update button; they never run kifab. The output is checked "
+        "against KiCad's own pcm.v1.schema.json.",
+    )
+    pcm_parser.add_argument(
+        "build",
+        nargs="?",
+        default=str(DEFAULT_OUT),
+        help=f"directory holding the built library (default: {DEFAULT_OUT}/)",
+    )
+    pcm_parser.add_argument(
+        "-o", "--out", default="site", help="where to write the repository (default: site/)"
+    )
+    pcm_parser.add_argument(
+        "--base-url",
+        required=True,
+        help="public URL the output directory will be served from, e.g. "
+        "https://USER.github.io/REPO — it is baked into the download links",
+    )
+    pcm_parser.add_argument(
+        "--pcm-version",
+        metavar="VERSION",
+        help="package version (default: today's UTC date, YYYY.MM.DD). PCM "
+        "decides 'is there an update?' by comparing this.",
+    )
+    pcm_parser.add_argument("--identifier", default=RepoIdentity.identifier)
+    pcm_parser.add_argument("--name", default=RepoIdentity.name)
+    pcm_parser.add_argument("--description", default=RepoIdentity.description)
+    pcm_parser.add_argument(
+        "--license",
+        default=RepoIdentity.license,
+        help="must be one of PCM's licence enum (default: %(default)s)",
+    )
+    pcm_parser.add_argument("--author", default=RepoIdentity.author)
+    pcm_parser.add_argument("--homepage", default=RepoIdentity.homepage)
+    pcm_parser.add_argument(
+        "--schema", help="pcm.v1.schema.json to validate against (default: the "
+        "installed KiCad's copy, else the one shipped with kifab)"
+    )
+    pcm_parser.add_argument(
+        "--no-validate", action="store_true", help="skip the schema check"
+    )
+    pcm_parser.add_argument("--json", action="store_true")
+    pcm_parser.set_defaults(func=_pcm_command)
 
     args = parser.parse_args(argv)
     return args.func(args)
