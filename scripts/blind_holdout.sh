@@ -15,6 +15,15 @@
 #     human step, on purpose — this script does not know the answer and must
 #     not learn it.
 #
+# Exit codes, because two of them are outcomes rather than failures:
+#
+#   0  a proposal was produced and every gate passed
+#  10  a proposal was produced and the validators are blocking it — the usual
+#      result when the drawing did not state something the model refused to
+#      invent. Read the findings and the NOTEs; the run is still evidence.
+#   *  generation produced no proposal at all, or the audit failed. Nothing to
+#      grade.
+#
 # Nothing is written to parts/. Acceptance is `kifab accept runs/LTC5552/`,
 # which is a separate command a human types after reading the proposal.
 set -euo pipefail
@@ -59,15 +68,31 @@ set -e
 step "Audit the transcript — this decides whether the run is evidence at all"
 uv run kifab audit "runs/$MPN"
 
-if (( GEN != 0 )); then
+# `kifab generate` exits nonzero both when it could not produce a proposal and
+# when it produced one the validators block. Those are opposite outcomes and
+# the harness has to tell them apart: the first is a broken run with nothing to
+# read, the second is the pipeline working — a reviewable document with a named
+# gap in it. The proposal file on disk is what separates them.
+PROPOSAL="runs/$MPN/proposal/$MPN.yaml"
+BLOCKED=0
+
+if [[ ! -f "$PROPOSAL" ]]; then
   echo
-  echo "generation did not complete cleanly (exit $GEN). Read runs/$MPN/ before" >&2
+  echo "generation produced no proposal (exit $GEN). Read runs/$MPN/ before" >&2
   echo "drawing any conclusion; a refusal is a legitimate outcome." >&2
   exit "$GEN"
 fi
 
+if (( GEN != 0 )); then
+  BLOCKED=1
+  echo
+  echo "The model produced a proposal and the validators are blocking it." >&2
+  echo "That is not a failed run: read the findings below, then the NOTEs in" >&2
+  echo "$PROPOSAL. Grading still applies to everything that was stated." >&2
+fi
+
 step "Validate the proposal with every gate, warnings blocking"
-uv run kifab check "runs/$MPN/proposal/build" --strict || true
+uv run kifab check "$PROPOSAL" "runs/$MPN/proposal/build" --strict || true
 
 step "Grade it"
 cat <<EOF
@@ -96,3 +121,9 @@ cat <<EOF
 
   Nothing has been written to parts/. To adopt:  kifab accept runs/$MPN/
 EOF
+
+if (( BLOCKED )); then
+  echo "verdict: proposal produced, blocked by the validators (exit 10)." >&2
+  exit 10
+fi
+echo "verdict: proposal produced and every gate passed (exit 0)." >&2
