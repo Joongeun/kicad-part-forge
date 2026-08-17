@@ -3,7 +3,7 @@
   "description": "KiCad symbol and footprint tooling for Claude Code",
   "owner": {
     "name": "KiCad Part Forge contributors",
-    "url": "https://github.com/clash/kicad-part-forge"
+    "url": "https://github.com/Joongeun/kicad-part-forge"
   },
   "metadata": {
     "description": "KiCad symbol and footprint tooling for Claude Code",
@@ -17,9 +17,9 @@
       "version": "0.1.0",
       "author": {
         "name": "KiCad Part Forge contributors",
-        "url": "https://github.com/clash/kicad-part-forge"
+        "url": "https://github.com/Joongeun/kicad-part-forge"
       },
-      "homepage": "https://github.com/clash/kicad-part-forge",
+      "homepage": "https://github.com/Joongeun/kicad-part-forge",
       "license": "GPL-3.0-or-later",
       "category": "productivity",
       "keywords": ["kicad", "pcb", "eda", "footprint", "symbol", "hardware"]

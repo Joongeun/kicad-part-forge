@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from typing import Any, Iterator, Protocol
 
 #: Sent so a Part-DB admin reading their access log can tell what this was.
-USER_AGENT = "kifab/0.1 (+https://github.com/clash/kicad-part-forge)"
+USER_AGENT = "kifab/0.1 (+https://github.com/Joongeun/kicad-part-forge)"
 
 #: API Platform's content types. POST creates a resource and wants the full
 #: JSON-LD document; PATCH is a *merge patch* (RFC 7386) and must say so, or

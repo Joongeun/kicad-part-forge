@@ -96,7 +96,7 @@ class RepoIdentity:
     # separate question and lives in pyproject.toml.
     license: str = "CC-BY-SA-4.0"
     author: str = "KiCad Part Forge"
-    homepage: str = "https://github.com/clash/kicad-part-forge"
+    homepage: str = "https://github.com/Joongeun/kicad-part-forge"
     tags: tuple[str, ...] = ("kicad", "footprints", "symbols", "kifab")
     status: str = "stable"
 

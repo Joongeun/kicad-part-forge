@@ -25,7 +25,7 @@ parts/<MPN>.yaml  ──▶  Part IR  ──┬──▶  build/<lib>.kicad_sym
 ### 1. Claude Code plugin — the LLM runs on your subscription
 
 ```
-/plugin marketplace add clash/kicad-part-forge
+/plugin marketplace add Joongeun/kicad-part-forge
 /plugin install part-forge
 /part-forge:forge STM32F103C8T6
 ```
@@ -58,7 +58,7 @@ that needs a model, and it says so rather than improvising. BYOK is an extra:
 KiCad → Preferences → **Plugin and Content Manager** → *Manage…* → add:
 
 ```
-https://clash.github.io/kicad-part-forge/repository.json
+https://Joongeun.github.io/kicad-part-forge/repository.json
 ```
 
 CI rebuilds the library from `parts/` on every push, validates it, and republishes
