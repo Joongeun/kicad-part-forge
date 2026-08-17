@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .enums import MountType
 from .package import Package
@@ -90,7 +90,29 @@ class FootprintSpec(BaseModel):
         description="3D model path, normally using a KiCad path variable, e.g. "
         "'${KICAD9_3DMODEL_DIR}/Package_SO.3dshapes/SOIC-8.step'.",
     )
+    model_offset: tuple[float, float, float] = Field(
+        default=(0.0, 0.0, 0.0),
+        description="3D model translation (x, y, z) in mm. Real parts need "
+        "this: a STEP whose origin is not the footprint origin lands in the "
+        "wrong place in the 3D viewer and in every mechanical export.",
+    )
+    model_rotate: tuple[float, float, float] = Field(
+        default=(0.0, 0.0, 0.0),
+        description="3D model rotation (x, y, z) in degrees. A vendor STEP is "
+        "very often authored 90 deg off KiCad's footprint frame about Z.",
+    )
     style: FootprintStyle = Field(default_factory=FootprintStyle)
+
+    @model_validator(mode="after")
+    def _model_placement_needs_a_model(self) -> FootprintSpec:
+        if self.model is None and (
+            any(self.model_offset) or any(self.model_rotate)
+        ):
+            raise ValueError(
+                "model_offset/model_rotate were given but `model` is unset; "
+                "there is nothing to place"
+            )
+        return self
 
     def mount_type(self) -> MountType:
         return self.mount if self.mount is not None else self.package.mount()

@@ -172,10 +172,53 @@ carries its semantics in its `description`.
 | `src/kifab/ipc/` | IPC-7351B land arithmetic and package families |
 | `src/kifab/index/` | SQLite/FTS index over the local corpus + package identity |
 | `src/kifab/resolve/` | resolver tiers; `local.py`/`adopt.py` are T0, `easyeda.py` is T1 |
+| `src/kifab/generate/` | T2 — datasheet in, proposal out. Constructed from `(PDF, MPN)` only |
+| `src/kifab/pdf/` | local text-layer extraction and page selection (free, deterministic) |
+| `src/kifab/llm/` | the three providers, the sandbox and the transcript |
+| `src/kifab/review.py` | the review gate — the only writer into `parts/` |
+| `src/kifab/audit.py` | `kifab audit`: prove a run never saw an existing part |
 | `src/kifab/validate/` | schema lint, geometry sanity, KLC, the `kicad-cli` gate |
 | `src/kifab/uuids.py` | derived (never random) UUIDs |
+| `skills/` | Claude Code skills: `forge` (route an MPN), `datasheet` (read a drawing) |
 | `parts/` | the part corpus |
+| `runs/` | generation runs: transcript, page rationale, proposal, preview |
 | `tests/golden/` | reviewed reference output, byte-compared |
 
 `DECISIONS.md` records the locked decisions; don't relitigate them without
 reading it.
+
+## Generating a part from its datasheet (tier T2)
+
+```
+kifab generate STM32F103C8T6 --datasheet ds.pdf     # stages runs/<MPN>/
+kifab audit   runs/STM32F103C8T6/                   # prove it was blind
+kifab accept  runs/STM32F103C8T6/                   # the only writer into parts/
+```
+
+Three things about that sequence are deliberate:
+
+* **Only the pages that matter are sent.** The text layer is read locally to
+  find the pin table and the mechanical drawing; a 40-page datasheet typically
+  ships 3 pages to the model. Free, deterministic, and tested on its own.
+* **`generate` cannot write to your library.** It has no argument that names
+  one. `accept` is a separate command, and it re-runs every validator plus the
+  transcript audit before it copies anything.
+* **The deterministic core needs no LLM.** `--provider none` is a first-class
+  choice; T0, T1, T3 and every validator never construct a provider. With no
+  model configured, `generate` refuses loudly rather than emitting something
+  plausible — `scripts/verify.sh` asserts that on every run.
+
+| `--provider` | For | Cost |
+|---|---|---|
+| `claude-code` (default) | anyone with a Claude subscription | nothing beyond the plan |
+| `api-key` | pay-as-you-go, CI (`pip install 'kifab[api]'`) | their own API bill |
+| `none` | deterministic only | nothing |
+
+### The blind holdout
+
+`scripts/blind_holdout.sh <datasheet.pdf>` runs the LTC5552 holdout: generate
+in a scratch tree containing only the datasheet, audit the transcript, validate
+the result, and print the grading checklist. The audit asserts the run read no
+`.kicad_mod`/`.kicad_sym`, fetched from no library aggregator, and never
+succeeded outside its own scratch directory — any violation fails the run
+regardless of how good the output looks.

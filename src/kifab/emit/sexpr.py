@@ -227,6 +227,20 @@ def quote(value: str) -> str:
     return f'"{escaped}"'
 
 
+def unquote(value: str) -> str:
+    """The exact inverse of `quote`: strip the quoting the parser preserves.
+
+    Lives here, next to `quote`, rather than in the index reader where it was
+    first written. A validator that needs to read a quoted atom must not have
+    to import the local-library index to do it — tier T2 asserts that the index
+    is not in its import graph at all (see `kifab/generate/__init__.py`), and
+    this one misplaced helper was the only thing that made it so.
+    """
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        return value[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+    return value
+
+
 def find(node: Node, token: str) -> Node | None:
     """First direct child list whose head token matches."""
     for child in node:

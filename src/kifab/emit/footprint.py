@@ -247,6 +247,16 @@ def _pad_order(number: str) -> tuple:
     ) or ((0, 0, ""),)
 
 
+def _pad_label(pad: Pad) -> str:
+    """The pad number as KiCad writes it.
+
+    Stencil apertures are numbered `""` in canonical form — `kicad-cli fp
+    upgrade` strips any number off a pad with no copper layer, which is how
+    this was found (see DECISIONS.md, Phase 5).
+    """
+    return "" if pad.aperture else pad.number
+
+
 def _pad_node(pad: Pad, uuid: str) -> Node:
     at: Node = ["at", fmt_num(_round(pad.at[0])), fmt_num(_round(pad.at[1]))]
     if pad.rotation:
@@ -254,7 +264,7 @@ def _pad_node(pad: Pad, uuid: str) -> Node:
 
     node: Node = [
         "pad",
-        quote(pad.number),
+        quote(_pad_label(pad)),
         pad.type.value,
         pad.shape.value,
         at,
@@ -560,19 +570,40 @@ def footprint_node(part: Part) -> Node:
     # pads in order already, so this only surfaced with an EasyEDA import,
     # whose exposed pad is stated first. The sort is stable, so pads sharing a
     # number (a thermal-via variant) keep their relative order.
-    for pad in sorted(pads, key=lambda p: _pad_order(p.number)):
-        node.append(_pad_node(pad, uuids.named("pad", pad.number)))
+    #
+    # Pads may legitimately share a number — an exposed pad and its paste
+    # sub-apertures, or a thermal-via variant. The UUID seed therefore counts
+    # repeats: the first pad with a given number keeps the plain seed (so no
+    # existing UUID moves), and later ones are disambiguated. Without this,
+    # two pads in the same file would carry the same derived UUID.
+    seen: dict[tuple[bool, str], int] = {}
+    # Ties (pads sharing a number, and the anonymous apertures which all share
+    # the empty one) break on position, x then y — measured the same way as
+    # every other canonical-form rule here, by feeding kicad-cli a file in a
+    # different order and reading back what it wrote.
+    for pad in sorted(
+        pads, key=lambda p: (_pad_order(_pad_label(p)), p.at[0], p.at[1])
+    ):
+        key = (pad.aperture, pad.number)
+        repeat = seen.get(key, 0)
+        seen[key] = repeat + 1
+        seed = pad.number if not repeat else f"{pad.number}~{repeat}"
+        if pad.aperture:
+            seed = f"aperture:{seed}"
+        node.append(_pad_node(pad, uuids.named("pad", seed)))
 
     node.append(["embedded_fonts", "no"])
 
     if spec.model:
+        # KiCad writes the model block as offset / scale / rotate, in that
+        # order, always all three even when they are identities.
         node.append(
             [
                 "model",
                 quote(spec.model),
-                ["offset", ["xyz", "0", "0", "0"]],
+                ["offset", ["xyz", *(fmt_num(v) for v in spec.model_offset)]],
                 ["scale", ["xyz", "1", "1", "1"]],
-                ["rotate", ["xyz", "0", "0", "0"]],
+                ["rotate", ["xyz", *(fmt_num(v) for v in spec.model_rotate)]],
             ]
         )
     return node

@@ -10,11 +10,15 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.7",
+    "pypdf>=6.16.1",
     "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "pytest-cov>=5.0"]
+# The BYOK provider only. Deliberately optional: `import kifab.llm` must not
+# pull in an HTTP client, and tests/test_llm.py asserts that it does not.
+api = ["anthropic>=0.40"]
 
 [project.scripts]
 kifab = "kifab.cli:main"

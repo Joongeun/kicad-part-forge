@@ -18,11 +18,9 @@ from ..emit import sexpr
 from .package_id import PackageIdentity, PadGeom, identity_from_footprint
 
 
-def unquote(atom: str) -> str:
-    """Strip the quoting the parser deliberately preserves."""
-    if len(atom) >= 2 and atom[0] == '"' and atom[-1] == '"':
-        return atom[1:-1].replace('\\"', '"').replace("\\\\", "\\")
-    return atom
+#: Re-exported so existing callers keep working; it now lives next to
+#: `sexpr.quote`, whose inverse it is.
+unquote = sexpr.unquote
 
 
 def _atoms(node: sexpr.Node) -> list[str]:

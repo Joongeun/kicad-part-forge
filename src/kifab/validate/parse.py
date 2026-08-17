@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..emit import sexpr
-from ..index.read import unquote
+from ..emit.sexpr import unquote
 
 #: How finely an arc is sampled when measuring clearance to it. 16 chords over
 #: a full circle keeps the sagitta under 2 µm for a 1 mm radius, which is an

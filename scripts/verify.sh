@@ -15,8 +15,49 @@ warn() { printf '\033[33m    skip: %s\033[0m\n' "$1"; }
 step "Build the part corpus"
 uv run kifab build parts/ -o build || fail=1
 
-step "Test suite (IR, emitters, golden files, S-expression round-trip, IPC geometry)"
+step "Test suite (IR, emitters, golden files, round-trip, IPC geometry, T2 isolation)"
 uv run pytest -q || fail=1
+
+step "Tier T2 must not be able to see the local library"
+# Structural isolation, asserted here as well as in the suite because it is the
+# single property that makes a generated part evidence rather than a guess. A
+# fresh interpreter, so an earlier import cannot mask it.
+uv run python -c '
+import sys, kifab.generate
+leaked = sorted(m for m in sys.modules if m.startswith(("kifab.index", "kifab.resolve")))
+if leaked:
+    raise SystemExit("T2 imported the local-library layer: " + ", ".join(leaked))
+print("    T2 import graph is clean")
+' || fail=1
+
+step "Negative control: with no LLM, generation must refuse, not improvise"
+# Uses a real, synthetic datasheet so the refusal comes from the *provider*,
+# not from the PDF reader — a control that fails for the wrong reason proves
+# nothing. Exit 3 is `kifab generate`'s "no model configured".
+NEG="$(mktemp -d)"
+PYTHONPATH=tests uv run python -c "
+import pathlib, sys
+from pdfs import datasheet
+pathlib.Path(sys.argv[1], 'ds.pdf').write_bytes(datasheet())
+" "$NEG"
+set +e
+uv run kifab generate NEGATIVE-CONTROL --datasheet "$NEG/ds.pdf" --provider none \
+  --force-tier=generate --isolated --runs "$NEG/runs" >/dev/null 2>"$NEG/err"
+neg=$?
+set -e
+if (( neg != 3 )); then
+  echo "    FAILED: --provider none exited $neg, expected 3 (refusal)"
+  fail=1
+elif compgen -G "$NEG/runs/NEGATIVE-CONTROL/proposal/*.yaml" >/dev/null; then
+  echo "    FAILED: --provider none wrote a part file anyway"
+  fail=1
+elif ! grep -q "will not guess pad geometry" "$NEG/err"; then
+  echo "    FAILED: the refusal did not say why"
+  fail=1
+else
+  echo "    refused loudly, wrote nothing, and said what to do instead"
+fi
+rm -rf "$NEG"
 
 step "Validators: schema lint, geometry sanity, KLC, KiCad format conformance"
 # `kifab check` owns the kicad-cli round-trip gate now (src/kifab/validate/

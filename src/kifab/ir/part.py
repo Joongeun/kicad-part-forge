@@ -105,7 +105,13 @@ class Part(BaseModel):
         # single most valuable cross-check in the IR: a symbol/footprint pair
         # that disagrees about pin numbers produces a board that cannot be
         # routed correctly, and nothing downstream will notice.
-        pad_numbers = {pad.number for pad in self.footprint.package.resolve_pads()}
+        # Stencil apertures carry a land's number for traceability but are not
+        # copper and never appear in a netlist, so they are not bondable.
+        pad_numbers = {
+            pad.number
+            for pad in self.footprint.package.resolve_pads()
+            if not pad.aperture
+        }
         pin_numbers = {pin.number for pin in self.symbol.pins}
         missing = sorted(pin_numbers - pad_numbers)
         if missing:

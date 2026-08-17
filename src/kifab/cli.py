@@ -12,9 +12,14 @@ import json
 import sys
 from pathlib import Path
 
+from .audit import audit_run, trace
 from .build import build, discover
+from .generate import GenerationError, GenerationRequest, generate
 from .index import Index, LibraryRoot, default_db_path, default_roots
 from .ir import load_part
+from .llm import DEFAULT_PROVIDER, LLMUnavailable, ProviderError, make_provider
+from .pdf.text import PdfError
+from .review import ReviewError, accept
 from .resolve import MatchSet, search
 from .resolve.adopt import AdoptionError, adopt, to_yaml
 from .resolve.easyeda import (
@@ -31,6 +36,7 @@ from .validate import Conformance, check_part, check_paths
 DEFAULT_PARTS = Path("parts")
 DEFAULT_OUT = Path("build")
 DEFAULT_MODELS = Path("models")
+DEFAULT_RUNS = Path("runs")
 
 
 def _build_command(args: argparse.Namespace) -> int:
@@ -321,6 +327,126 @@ def _lcsc_command(args: argparse.Namespace) -> int:
     return 0 if report.ok() else 1
 
 
+def _generate_command(args: argparse.Namespace) -> int:
+    """T2 — generate a part from its datasheet, into a review directory.
+
+    This command cannot write to `parts/`. It stages a proposal under
+    `runs/<mpn>/`; `kifab accept` is the separate, human-typed step that
+    promotes it. See `kifab/review.py` for why that split is structural.
+    """
+    if args.force_tier not in (None, "generate"):
+        print(
+            f"kifab: --force-tier={args.force_tier} is not implemented; "
+            "`kifab generate` is tier T2 and only understands 'generate'",
+            file=sys.stderr,
+        )
+        return 2
+
+    datasheet = Path(args.datasheet)
+    if not datasheet.is_file():
+        print(f"kifab: no datasheet at {datasheet}", file=sys.stderr)
+        return 2
+
+    run_dir = Path(args.runs) / args.mpn
+    if run_dir.exists() and not args.force:
+        print(
+            f"kifab: {run_dir} already exists. Read it, or pass --force to "
+            "start the run again.",
+            file=sys.stderr,
+        )
+        return 2
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    conformance = None
+    if not args.no_kicad_cli:
+        conformance = Conformance.discover(args.kicad_cli)
+
+    provider = make_provider(args.provider, run_dir=run_dir)
+
+    # The whole input to T2. There is deliberately no third argument.
+    request = GenerationRequest(mpn=args.mpn, datasheet=datasheet.read_bytes())
+
+    try:
+        proposal = generate(
+            request,
+            provider=provider,
+            run_dir=run_dir,
+            conformance=conformance,
+            max_pages=args.max_pages,
+        )
+    except LLMUnavailable as exc:
+        print(f"\nkifab: GENERATION REFUSED\n{exc}", file=sys.stderr)
+        return 3
+    except (GenerationError, ProviderError, PdfError) as exc:
+        print(f"\nkifab: GENERATION FAILED\n{exc}", file=sys.stderr)
+        return 1
+
+    print(proposal.yaml_path)
+    print(proposal.summary(), file=sys.stderr)
+    text = proposal.report.format()
+    if text:
+        print(text, file=sys.stderr)
+
+    audit = audit_run(run_dir)
+    print(f"kifab audit: {'OK' if audit.ok() else 'FAILED'}", file=sys.stderr)
+    if not audit.ok():
+        print(audit.format(), file=sys.stderr)
+
+    ok = proposal.report.ok() and audit.ok()
+    print(
+        "\nkifab: NOTHING HAS BEEN WRITTEN TO YOUR LIBRARY.\n"
+        f"  review  {proposal.yaml_path}\n"
+        + (f"  preview {proposal.svg_dir}\n" if proposal.svg_dir else "")
+        + f"  audit   kifab audit {run_dir}\n"
+        + f"  accept  kifab accept {run_dir}",
+        file=sys.stderr,
+    )
+    return 0 if ok else 1
+
+
+def _accept_command(args: argparse.Namespace) -> int:
+    conformance = None if args.no_kicad_cli else Conformance.discover(args.kicad_cli)
+    try:
+        acceptance = accept(
+            Path(args.run),
+            parts_dir=Path(args.out),
+            conformance=conformance,
+            force=args.force,
+            allow_unaudited=args.allow_unaudited,
+        )
+    except ReviewError as exc:
+        print(f"kifab: NOT ACCEPTED\n{exc}", file=sys.stderr)
+        return 1
+    print(acceptance.target)
+    print(
+        f"kifab: accepted {acceptance.mpn} into {acceptance.target} "
+        f"({acceptance.check.summary()}). Now `kifab build`.",
+        file=sys.stderr,
+    )
+    return 0
+
+
+def _audit_command(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run)
+    report = audit_run(run_dir)
+    if args.json:
+        json.dump(report.to_dict(), sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0 if report.ok() else 1
+
+    print(f"transcript trace for {run_dir}:")
+    print(trace(run_dir))
+    text = report.format(verbose=True)
+    if text:
+        print(text)
+    verdict = "OK" if report.ok() else "FAILED"
+    print(
+        f"kifab audit: {verdict} — {report.summary()}",
+        file=sys.stderr,
+    )
+    return 0 if report.ok() else 1
+
+
 def _check_command(args: argparse.Namespace) -> int:
     targets = [Path(p) for p in args.targets] or [DEFAULT_PARTS]
     conformance = None
@@ -530,6 +656,82 @@ def main(argv: list[str] | None = None) -> int:
         help="import from a saved EasyEDA component JSON instead of the network",
     )
     lcsc_parser.set_defaults(func=_lcsc_command)
+
+    # -- T2: generate from the datasheet, behind a review gate -----------
+    gen_parser = sub.add_parser(
+        "generate",
+        help="generate a part from its datasheet PDF (tier T2, needs an LLM)",
+        description="Selects the pin-table and mechanical-drawing pages "
+        "locally (free, deterministic), sends only those to the configured "
+        "provider, and stages the result under runs/<MPN>/ as a proposal. "
+        "It CANNOT write to your library: `kifab accept` is a separate step. "
+        "With --provider none this command fails loudly rather than emitting "
+        "something plausible.",
+    )
+    gen_parser.add_argument("mpn", help="manufacturer part number")
+    gen_parser.add_argument(
+        "--datasheet", required=True, help="path to the datasheet PDF"
+    )
+    gen_parser.add_argument(
+        "--provider",
+        default=DEFAULT_PROVIDER,
+        choices=["claude-code", "api-key", "none"],
+        help=f"which LLM provider to use (default: {DEFAULT_PROVIDER})",
+    )
+    gen_parser.add_argument(
+        "--force-tier",
+        choices=["generate"],
+        help="pin the resolver to this tier. `generate` is the only value, "
+        "and it is what the blind-holdout test uses: no local search, no "
+        "LCSC, datasheet only.",
+    )
+    gen_parser.add_argument(
+        "--isolated",
+        action="store_true",
+        help="documentation of intent; isolation is structural and always on "
+        "(the T2 code path has no access to the library index).",
+    )
+    gen_parser.add_argument(
+        "--runs", default=str(DEFAULT_RUNS), help=f"run directory (default: {DEFAULT_RUNS}/)"
+    )
+    gen_parser.add_argument("--max-pages", type=int, help="cap on pages sent")
+    gen_parser.add_argument("--force", action="store_true", help="reuse an existing run dir")
+    gen_parser.add_argument("--kicad-cli", help=argparse.SUPPRESS)
+    gen_parser.add_argument("--no-kicad-cli", action="store_true")
+    gen_parser.set_defaults(func=_generate_command)
+
+    accept_parser = sub.add_parser(
+        "accept",
+        help="promote a reviewed proposal into parts/ (the review gate)",
+        description="The only command that writes a generated part into your "
+        "parts directory. It re-runs every validator and the transcript "
+        "audit first, and refuses on any error.",
+    )
+    accept_parser.add_argument("run", help="the runs/<MPN>/ directory to accept")
+    accept_parser.add_argument("-o", "--out", default=str(DEFAULT_PARTS))
+    accept_parser.add_argument("--force", action="store_true")
+    accept_parser.add_argument(
+        "--allow-unaudited",
+        action="store_true",
+        help="accept a run whose transcript is missing. Never use this to "
+        "wave through an audit that actually failed.",
+    )
+    accept_parser.add_argument("--kicad-cli", help=argparse.SUPPRESS)
+    accept_parser.add_argument("--no-kicad-cli", action="store_true")
+    accept_parser.set_defaults(func=_accept_command)
+
+    audit_parser = sub.add_parser(
+        "audit",
+        help="prove a generation run never looked at an existing part",
+        description="Reads runs/<MPN>/transcript.jsonl and asserts it contains "
+        "no read of a .kicad_mod/.kicad_sym, no fetch from a library "
+        "aggregator, and no successful access outside the run's own scratch "
+        "directory. Prints the tool-call trace so you can read what the model "
+        "did rather than what it says it did.",
+    )
+    audit_parser.add_argument("run", help="the runs/<MPN>/ directory to audit")
+    audit_parser.add_argument("--json", action="store_true")
+    audit_parser.set_defaults(func=_audit_command)
 
     args = parser.parse_args(argv)
     return args.func(args)
